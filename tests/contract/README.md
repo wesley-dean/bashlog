@@ -1,12 +1,12 @@
 # bashlog Contract Test Suite
 
 This directory contains the active behavior and security tests derived from the
-Accepted `doc/bashlog-spec.md` and ADR-013 through ADR-024.
+Accepted `doc/bashlog-spec.md` and the governing ADR corpus, including the
+presentation and adaptive-rendering decisions in ADR-025 and ADR-026.
 
-The suite was intentionally written before the runtime implementation and is now
-the executable public contract used by the Makefile, CI, and release validation.
-Implementation changes are expected to satisfy these tests; the tests should not
-be weakened merely to make an implementation convenient.
+The suite is the executable public contract used by the Makefile, CI, and release
+validation.  Implementation changes are expected to satisfy these tests; the
+tests should not be weakened merely to make an implementation convenient.
 
 ## Artifact Matrix
 
@@ -21,8 +21,8 @@ dist/bashlog.min.bash
 All three artifacts must exhibit equivalent public behavior.
 
 `make test-report` writes one JUnit report per artifact under `test-results/`.
-The initial implementation established 100 focused Bats tests per artifact, for
-300 artifact-level test results in the normal matrix.
+The exact test count may grow as accepted behavior grows; the important invariant
+is that every artifact receives the same complete contract suite.
 
 ## Test Organization
 
@@ -30,8 +30,13 @@ The initial implementation established 100 focused Bats tests per artifact, for
   namespace ownership, public API presence, and no-external-runtime-command
   evidence.
 - `levels-and-logging.bats`: threshold semantics, canonical severity helpers,
-  printf-style formatting, rendering, stream separation, option parsing, context
-  validation order, and emission errors.
+  printf-style formatting, stream separation, option parsing, context validation
+  order, and emission errors.  These tests force plain human rendering when the
+  renderer is not the behavior under test.
+- `presentation.bats`: presentation defaults and setters, adaptive non-TTY
+  logfmt, explicit human/logfmt rendering, tags, color boundaries, timestamps,
+  exact logfmt escaping, caller-managed and logger-managed redaction workflows,
+  and final verification after rendering.
 - `redaction-contexts.bats`: context creation, append-only lifecycle, destruction,
   tombstones, duplicate handling, and fail-closed context selection.
 - `redaction-fixed.bats`: exact literal fixed matching, occurrence progression,
@@ -40,11 +45,14 @@ The initial implementation established 100 focused Bats tests per artifact, for
 - `redaction-patterns.bats`: glob/ERE registration and matching semantics,
   extglob rejection, zero-length rejection, anchored ERE location, locale
   preservation, registration order, and `nocasematch` isolation.
-- `redaction-security.bats`: cross-rule reintroduction, final verification,
-  fixed safe diagnostics, complete-record coverage, replacement-as-data behavior,
-  and negative disclosure assertions.
-- `compat-bash43.bash`: representative public behavior executed under Bash 4.3
-  against each artifact by CI and release validation.
+- `redaction-security.bats`: cross-rule reintroduction, semantic-field primary
+  redaction, post-render final verification, fixed safe diagnostics,
+  replacement-as-data behavior, and negative disclosure assertions.  These tests
+  force plain human rendering where presentation is not the contract under test.
+- `compat-bash43.bash`: representative public behavior under Bash 4.3, including
+  presentation configuration, human/logfmt rendering, Bash-native timestamps,
+  logging redaction, standalone redaction, context destruction, and fail-closed
+  verification.
 
 ## Test Environment
 
@@ -57,6 +65,11 @@ BASHLOG_ARTIFACT=/absolute/path/to/a/generated/bashlog.artifact
 The artifact is sourced into a clean child Bash process.  Tests use Bats' separate
 standard-output and standard-error capture because the public contract assigns
 different meanings to those streams.
+
+A Bats-captured stderr stream is not a TTY.  Therefore the actual default
+`format=auto` behavior is logfmt in tests unless the test deliberately selects
+`human`.  Tests whose purpose is levels or redaction rather than renderer choice
+select `human` and `color=never` explicitly so they prove one contract at a time.
 
 Tests using `--separate-stderr` declare the required minimum Bats version in
 `setup()`.
@@ -80,6 +93,7 @@ This is especially important for:
 - single-quoted strings;
 - replacement values containing `$(...)`, `${...}`, `&`, or backslashes;
 - glob and ERE syntax;
+- logfmt escape fixtures;
 - Unicode and combining-sequence fixtures;
 - shell options configured inside the child process.
 
@@ -91,6 +105,32 @@ Additional test arguments may be passed after `BASHLOG_ARTIFACT`; they become
 `$2`, `$3`, and so on inside the child program.  This is useful for keeping
 security-test secret fixtures outside the program source while still preserving
 their exact contents.
+
+## Redaction Workflow Coverage
+
+The suite treats both documented redaction workflows as first-class behavior.
+
+Caller-managed redaction explicitly invokes:
+
+```text
+bashlog_redact CONTEXT STRING
+```
+
+and then logs the returned value without selecting the context again.
+
+Logger-managed redaction explicitly supplies:
+
+```text
+--context CONTEXT
+```
+
+on the logging call.  In that path, the complete printf-style message and each
+tag are transformed and verified before human/logfmt presentation, and the
+completed rendered record is finally verified before emission.
+
+Tests also prove the inverse: merely registering a context does not make it
+ambient.  A logging call that omits `--context` is not inspected against unrelated
+registered contexts.
 
 ## Negative Security Assertions
 
@@ -108,13 +148,17 @@ For protected values, assert absence from the relevant observable channels:
 
 The suite deliberately contains cases where a later replacement recreates text
 protected by an earlier fixed, glob, or ERE rule.  Those operations must fail
-closed at final verification rather than emit the transformed-but-unsafe
-candidate.
+closed at verification rather than emit the transformed-but-unsafe candidate.
+
+Logger-managed tests also cover library-generated or renderer-generated text that
+matches an explicitly selected context.  Primary redaction does not rewrite that
+metadata; the final non-transforming check suppresses the completed record.
 
 ## Bash 4.3
 
 `compat-bash43.bash` is intentionally smaller than the full Bats suite.  It is a
-representative runtime compatibility contract covering sourcing, levels, logging,
+representative runtime compatibility contract covering sourcing, levels,
+presentation configuration, human/logfmt rendering, timestamps, logging,
 fixed/glob/ERE redaction, context destruction, and final fail-closed verification.
 
 CI and release validation execute it against all three generated artifacts inside
@@ -132,4 +176,5 @@ applies to the bashlog **consumer runtime**, not to Bats or CI itself.
 
 The suite nevertheless includes representative runtime execution after `PATH` is
 changed to an unusable value.  That test provides evidence that bashlog does not
-silently rely on ordinary external helpers during logging/redaction.
+silently rely on ordinary external helpers during logging, presentation,
+timestamp generation, or redaction.
