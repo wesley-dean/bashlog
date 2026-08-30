@@ -16,8 +16,7 @@ Before consequential work:
 3. Read the full ADRs governing the area you intend to change; use
    `doc/adr/README.md` as the index.
 4. Read `doc/bashlog-spec.md` before changing public behavior or implementing the
-   proposed API.  The specification is currently Draft while ADR-013 through
-   ADR-024 remain Proposed.
+   accepted API.  The specification is the accepted normative public contract.
 5. Read `doc/documentation-standard.md` before editing Bash source comments.
 6. Read `doc/testing.md` before changing tests or generated artifacts.
 7. Read `doc/release-verification.md` before changing release behavior.
@@ -26,7 +25,7 @@ Before consequential work:
 When reasoning, rejected alternatives, security boundaries, or consequences
 matter, read the full record.
 
-`doc/bashlog-spec.md` defines the proposed observable contract.  It does not
+`doc/bashlog-spec.md` defines the accepted observable contract.  It does not
 supersede a governing ADR.  When the specification and an ADR conflict, surface
 the conflict and correct the documents before implementation rather than choosing
 whichever text is more convenient.
@@ -34,9 +33,10 @@ whichever text is more convenient.
 When repository evidence and an ADR conflict, surface the conflict.  Do not
 silently treat the implementation as the architectural source of truth.
 
-Proposed ADRs are proposals rather than binding current architecture.  Do not
-silently implement a proposed decision as though it were accepted; resolve its
-status as part of the consequential change that depends on it.
+The accepted architecture and normative specification describe what bashlog must
+become; they are not evidence that the current starter-derived runtime already
+implements that behavior.  Implementation changes must conform to the accepted
+records rather than reinterpret them silently.
 
 ## Repository Shape
 
@@ -50,26 +50,26 @@ status as part of the consequential change that depends on it.
 - `lib/redaction.bash`: non-runtime interface scaffold containing the exact
   Doxygen contracts for redaction registration, context destruction, and
   transform-only redaction; not yet assembled by the Makefile.
-- `lib/plugins/`: starter-derived additive-module layout; ADR-016 proposes
-  retaining deterministic modular assembly while removing runtime plugin-registry
-  semantics.
+- `lib/plugins/`: starter-derived additive-module layout; ADR-016 governs the
+  accepted replacement architecture, retaining deterministic modular assembly
+  while removing runtime plugin-registry semantics.
 - `tests/`: currently active starter-derived Bats behavior tests and compatibility
   helpers.
 - `tests/contract/`: dormant red-phase bashlog behavior/security tests written
   before implementation; these are intentionally outside the current
   `tests/*.bats` wildcard.
-- `doc/bashlog-spec.md`: Draft normative public behavior specification.
+- `doc/bashlog-spec.md`: accepted normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
-- `doc/adr/`: architectural decision records and their full reasoning.
+- `doc/adr/`: accepted architectural decision records and their full reasoning.
 - `doc/reference/`: generated Doxygen output; never commit it.
 - `vendor/`: generated dependency state managed by bashdeps; never commit it.
 - `dist/`: generated release artifacts; never edit them directly.
 - `test-results/`: generated JUnit reports.
 
 The repository still contains implementation scaffolding inherited from
-`template-bash`.  Documentation of intended bashlog behavior, Doxygen interface
-scaffolds, and dormant contract tests must not be mistaken for evidence that the
-starter runtime already implements that behavior.
+`template-bash`.  Accepted bashlog architecture, Doxygen interface scaffolds, and
+dormant contract tests must not be mistaken for evidence that the starter runtime
+already implements that behavior.
 
 ## Build and Dependency Boundaries
 
@@ -88,8 +88,9 @@ See ADR-003 and ADR-005 for the governing dependency and orchestration decisions
 See ADR-006 and ADR-012 for the release-artifact and checksum-companion contract.
 
 The current Makefile still uses the starter project name and starter source
-assembly.  The intended first-release bashlog artifacts described in the README
-and specification remain planned behavior until implementation updates the build.
+assembly.  The first-release bashlog artifacts described in the README and
+specification remain unimplemented until the implementation phase updates the
+build.
 
 The Doxygen interface scaffold files under `lib/` are intentionally not listed in
 the current `SOURCE_FILES`.  Do not add them to the build merely to make the
@@ -101,19 +102,19 @@ contract tests.
 
 The inherited starter currently assembles a release artifact from an explicit
 core source order plus lexically sorted files under `lib/plugins/`.  ADR-016
-proposes retaining explicit core ordering and deterministic additive-module
-discovery while removing the starter's runtime plugin registry and noop plugin
-for bashlog.
+accepts a bashlog-specific architecture that retains explicit core ordering and
+deterministic additive-module discovery while removing the starter's runtime
+plugin registry and noop plugin.
 
-Until the proposed ADR is accepted and implemented, distinguish current repository
-shape from intended bashlog architecture.  Do not introduce additional runtime
-plugin-registry dependencies merely because the scaffold currently contains one.
+Until ADR-016 is implemented, distinguish current repository shape from accepted
+bashlog architecture.  Do not introduce additional runtime plugin-registry
+dependencies merely because the scaffold currently contains one.
 
-See ADR-004 and proposed ADR-016.
+See ADR-004 and ADR-016.
 
-## Public API Direction
+## Public API Contract
 
-The Draft specification proposes this initial public surface:
+The accepted specification defines this initial public surface:
 
 ```text
 bashlog_level_get
@@ -134,7 +135,7 @@ bashlog_redaction_context_destroy
 bashlog_redact
 ```
 
-Important proposed public semantics include:
+Important public semantics include:
 
 - Bash 4.3 remains the minimum runtime.
 - The default logging threshold is `info`.
@@ -183,7 +184,7 @@ Security-sensitive helpers require substantive documentation even when they are
 internal.  Explain quoting assumptions, matcher semantics, ordering, failure
 behavior, and security boundaries that a reviewer would otherwise need to infer.
 
-The exact public-function documentation is now drafted in `lib/level.bash`,
+The exact public-function documentation is drafted in `lib/level.bash`,
 `lib/logging.bash`, and `lib/redaction.bash`.  These blocks are intended to remain
 beside the implementation and should be corrected before implementation whenever
 the public contract changes.  Do not rewrite them after the fact merely to make
@@ -198,13 +199,13 @@ See ADR-007, ADR-008, ADR-019, `doc/documentation-standard.md`, and
 
 ## Security-Sensitive Work
 
-ADR-018 proposes the overarching redaction security boundary.  ADR-020 through
-ADR-024 propose the concrete context, rule, matcher, and final-verification
-semantics that refine it.  Work in this area must preserve the distinction
-between accepted and proposed decisions and must not let implementation
-experiments silently choose different behavior.
+ADR-018 governs the overarching redaction security boundary.  ADR-020 through
+ADR-024 govern the concrete context, rule, matcher, and final-verification
+semantics that refine it.  Implementation work must preserve those accepted
+decisions rather than allowing feasibility experiments to choose different
+behavior silently.
 
-The proposed redaction model includes the following review-critical properties:
+The accepted redaction model includes the following review-critical properties:
 
 - contexts follow an `unseen -> active -> destroyed` lifecycle and are append-only
   while active;
@@ -223,7 +224,7 @@ The proposed redaction model includes the following review-critical properties:
 - and redaction failure diagnostics use a bounded path that never reproduces the
   failed candidate or protected rule content.
 
-The Draft specification further fixes the public failure diagnostic candidate as:
+The accepted specification fixes the public failure diagnostic candidate as:
 
 ```text
 bashlog: message suppressed
@@ -239,8 +240,8 @@ Implementation is not complete merely because substitutions appear correct; the
 final output invariant must survive those cases.
 
 The project explicitly rejects vague trust claims and security through obscurity.
-Read ADR-018 through ADR-024, ADR-019, the Draft specification, and the redaction
-contract tests before implementing the security-critical output path.
+Read ADR-018 through ADR-024, ADR-019, the accepted specification, and the
+redaction contract tests before implementing the security-critical output path.
 
 ## Validation
 
