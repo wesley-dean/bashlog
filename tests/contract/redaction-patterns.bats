@@ -19,7 +19,6 @@ run_bashlog_script_extglob() {
     bashlog_redaction_add ctx glob 'token-???' '[TOKEN]' || exit
     bashlog_redact ctx 'before token-abc after'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'before [TOKEN] after' ]
 }
@@ -30,7 +29,6 @@ BASH
     bashlog_redaction_add ctx glob 'pin-[0-9][0-9][0-9][0-9]' '[PIN]' || exit
     bashlog_redact ctx 'pin-1234'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = '[PIN]' ]
 }
@@ -41,7 +39,6 @@ BASH
     bashlog_redaction_add ctx glob 'Secret?' '[R]' || exit
     bashlog_redact ctx 'secret1 Secret2'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'secret1 [R]' ]
 }
@@ -51,7 +48,6 @@ BASH
     source "$1"
     bashlog_redaction_add ctx glob '*' '[R]'
 BASH
-
   [ "${status}" -eq 65 ]
   [ -z "${output}" ]
 }
@@ -62,7 +58,6 @@ BASH
     source "$1"
     bashlog_redaction_add ctx glob '@(secret|token)' '[R]'
 BASH
-
   [ "${status}" -eq 65 ]
   [ -z "${output}" ]
 }
@@ -72,7 +67,6 @@ BASH
     source "$1"
     bashlog_redaction_add ctx glob '@(secret|token)' '[R]'
 BASH
-
   [ "${status}" -eq 65 ]
   [ -z "${output}" ]
 }
@@ -83,7 +77,6 @@ BASH
     bashlog_redaction_add ctx glob 'token-???' '[R]' || exit
     bashlog_redact ctx 'token-abc'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = '[R]' ]
 }
@@ -94,7 +87,6 @@ BASH
     bashlog_redaction_add ctx ere '[0-9]{3}-[0-9]{2}-[0-9]{4}' '[SSN]' || exit
     bashlog_redact ctx 'ssn=123-45-6789'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'ssn=[SSN]' ]
 }
@@ -105,7 +97,6 @@ BASH
     bashlog_redaction_add ctx ere 'foo$' '[END]' || exit
     bashlog_redact ctx 'foo middle foo'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'foo middle [END]' ]
 }
@@ -116,7 +107,6 @@ BASH
     bashlog_redaction_add ctx ere '^foo' '[START]' || exit
     bashlog_redact ctx 'foo middle foo'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = '[START] middle foo' ]
 }
@@ -130,7 +120,6 @@ BASH
     redact_rc=$?
     printf '%s:%s\n' "${add_rc}" "${redact_rc}"
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = '65:69' ]
 }
@@ -140,7 +129,6 @@ BASH
     source "$1"
     bashlog_redaction_add ctx ere 'a*' '[R]'
 BASH
-
   [ "${status}" -eq 65 ]
   [ -z "${output}" ]
 }
@@ -151,7 +139,6 @@ BASH
     bashlog_redaction_add ctx ere '(secret)-([0-9]+)' '\2-\1' || exit
     bashlog_redact ctx 'value=secret-42'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'value=\2-\1' ]
 }
@@ -162,7 +149,6 @@ BASH
     bashlog_redaction_add ctx ere 'secret-[0-9]+' '&' || exit
     bashlog_redact ctx 'value=secret-42'
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'value=&' ]
 }
@@ -177,7 +163,6 @@ BASH
     shopt -q nocasematch || exit 1
     printf '%s\n' "${value}"
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'secret1 [G] token3 [E]' ]
   [ -z "${stderr}" ]
@@ -191,7 +176,6 @@ BASH
     bashlog_redaction_add ctx glob 'gam??' delta || exit
     bashlog_redact ctx alpha
 BASH
-
   [ "${status}" -eq 0 ]
   [ "${output}" = 'delta' ]
 }
@@ -202,11 +186,10 @@ BASH
     source "$1"
     before=${LC_ALL}
     bashlog_redaction_add ctx glob 'id-[[:digit:]][[:digit:]]' '[ID]' || exit
-    bashlog_redaction_add ctx ere '[A-Z]{2}' '[CODE]' || exit
+    bashlog_redaction_add ctx ere '[A-Z]{2}' '[lower]' || exit
     bashlog_redact ctx 'id-12 AB' >/dev/null || exit
     [[ ${LC_ALL} == "${before}" ]]
 BASH
-
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
   [ -z "${stderr}" ]
