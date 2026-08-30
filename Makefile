@@ -28,9 +28,10 @@ BASHDEPS_SHA256 := bb6c807fa12c010950bda06172ac0611d278c57aca1f8352f41502d0d76b4
 BASH_MINIFIER := $(VENDOR_DIR)/bash-minifier.bash
 ADRCTL := $(VENDOR_DIR)/adrctl.bash
 DOXYGEN_BASH_FILTER := $(VENDOR_DIR)/doxygen-bash.awk
-ADR_INDEX := doc/adr/README.md
-ADR_INDEX_INTRO := doc/adr/README.intro.md
-ADR_INDEX_OUTRO := doc/adr/README.outro.md
+ADR_DIR ?= $(if $(strip $(ADRCTL_ADR_DIR)),$(strip $(ADRCTL_ADR_DIR)),$(strip $(shell if [[ -r .adr-dir ]]; then cat .adr-dir; else printf '%s' 'doc/adr'; fi)))
+ADR_INDEX_FILE ?= $(ADR_DIR)/README.md
+ADR_INDEX_INTRO ?= $(ADR_DIR)/README.intro.md
+ADR_INDEX_OUTRO ?= $(ADR_DIR)/README.outro.md
 REFERENCE_DOC_DIR := doc/reference
 
 VERSION ?= 0.0.0-dev
@@ -156,14 +157,16 @@ deps-check: verify-bashdeps $(DEPENDENCY_MANIFEST)
 	"$(BASHDEPS)" verify "$(DEPENDENCY_MANIFEST)"
 
 ## Regenerate the committed ADR landing page from maintained ADR source and framing.
+## ADR_INDEX_FILE may be overridden through the environment or Make command line.
 adr-index:
 	@test -f "$(ADRCTL)" || { printf '%s\n' 'Missing documentation dependency vendor/adrctl.bash; run make deps or make all' >&2; exit 1; }
 	@test -f "$(ADR_INDEX_INTRO)" || { printf '%s\n' 'Missing maintained ADR index introduction: $(ADR_INDEX_INTRO)' >&2; exit 1; }
 	@test -f "$(ADR_INDEX_OUTRO)" || { printf '%s\n' 'Missing maintained ADR index conclusion: $(ADR_INDEX_OUTRO)' >&2; exit 1; }
-	@tmp="$(ADR_INDEX).tmp"; \
+	@mkdir -p "$(dir $(ADR_INDEX_FILE))"
+	@tmp="$(ADR_INDEX_FILE).tmp"; \
 	trap 'rm -f "$$tmp"' EXIT; \
 	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" -o "$(ADR_INDEX_OUTRO)" >"$$tmp"; \
-	mv "$$tmp" "$(ADR_INDEX)"; \
+	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
 	trap - EXIT
 
 ## Generate committed ADR navigation and ephemeral Doxygen reference documentation.
