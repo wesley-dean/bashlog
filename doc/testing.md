@@ -17,14 +17,14 @@ The repository still contains the executable test suite inherited from
 plugin, generated artifacts, and checksum behavior.  They remain active only
 because the bashlog runtime has not yet replaced the starter implementation.
 
-The real bashlog public contract has been drafted separately under
-`tests/contract/` before implementation.  These are intentionally red-phase tests
-based on `doc/bashlog-spec.md` and ADR-013 through ADR-024.
+The accepted bashlog public contract is represented by red-phase tests under
+`tests/contract/` before implementation.  These tests are derived from the
+accepted `doc/bashlog-spec.md` and ADR-013 through ADR-024.
 
 The contract tests are **not** currently matched by the Makefile's top-level
-`tests/*.bats` wildcard.  This is deliberate: merging a pre-implementation
-contract should not make every ordinary repository validation run fail merely
-because the implementation has not started.
+`tests/*.bats` wildcard.  This is deliberate: accepting and merging a
+pre-implementation contract should not make every ordinary repository validation
+run fail merely because the implementation has not started.
 
 The implementation phase should begin by activating this contract suite and
 removing or replacing the starter behavior tests.  The implementation then earns
