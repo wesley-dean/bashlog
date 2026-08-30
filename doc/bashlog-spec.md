@@ -83,6 +83,9 @@ bashlog_timestamp_get
 bashlog_timestamp_set
 bashlog_color_get
 bashlog_color_set
+bashlog_level_style_get
+bashlog_level_style_set
+bashlog_level_style_reset
 
 bashlog_log
 bashlog_debug
@@ -115,7 +118,7 @@ bashlog does not depend on a system `sysexits.h` file or external utility.
 | Status | Meaning |
 | ---: | --- |
 | `0` | The requested operation succeeded.  For logging calls, this also includes intentional suppression by the configured level threshold. |
-| `64` | The caller supplied invalid arguments, an invalid level, an invalid tag, an invalid context identifier, an unknown option, an invalid presentation mode, or otherwise invalid API syntax. |
+| `64` | The caller supplied invalid arguments, an invalid level, an invalid tag, an invalid context identifier, an unknown option, an invalid presentation mode or style, or otherwise invalid API syntax. |
 | `65` | A proposed redaction rule is invalid, duplicate, unsatisfiable, or cannot be accepted under its matcher contract. |
 | `69` | A specifically requested redaction context is unavailable because it is unknown or destroyed. |
 | `70` | Redaction, final verification, timestamp acquisition, rendering, or another internal transformation could not be completed safely. |
@@ -223,7 +226,7 @@ threshold remains unchanged.
 
 ## Presentation Configuration
 
-bashlog has three independent presentation controls:
+bashlog has three global presentation controls:
 
 ```text
 format=auto
@@ -231,7 +234,8 @@ timestamp=off
 color=auto
 ```
 
-Those are the defaults after sourcing.
+Those are the defaults after sourcing.  Per-severity human-token style is a
+separate presentation state described below.
 
 All presentation setters validate atomically.  Invalid input returns `64`, emits
 no routine output, and leaves the previous setting unchanged.
@@ -328,30 +332,160 @@ always
 
 The default is `auto`.
 
-Color is a property of the human renderer only:
+Color mode controls whether bashlog-owned severity styling may be emitted by the
+human renderer:
 
 - `never` emits no bashlog-owned ANSI SGR sequences;
-- `auto` uses color only when standard error is a TTY according to `[[ -t 2 ]]`;
-- `always` uses color whenever the human renderer is selected.
+- `auto` uses the configured severity style only when standard error is a TTY
+  according to `[[ -t 2 ]]`;
+- `always` uses the configured severity style whenever the human renderer is
+  selected.
 
 The logfmt renderer NEVER emits bashlog-owned ANSI sequences, even when the color
 mode is `always`.
 
-The initial severity palette colors only the canonical severity token:
+Global color mode and per-level style are intentionally independent.  Color mode
+answers **whether** styling is permitted; the level-style API answers **what** the
+severity signifier looks like when styling is permitted.
 
-| Severity | SGR | Meaning |
-| --- | --- | --- |
-| `emergency` | `1;31` | bold red |
-| `alert` | `1;31` | bold red |
-| `critical` | `31` | red |
-| `error` | `31` | red |
-| `warning` | `33` | yellow |
-| `notice` | `36` | cyan |
-| `info` | `32` | green |
-| `debug` | `2` | dim |
+### Severity Token Style
 
-The reset sequence immediately follows the severity token so tags and message
-text are not accidentally colorized by bashlog.
+The public style API is:
+
+```text
+bashlog_level_style_get LEVEL
+bashlog_level_style_set LEVEL COLOR INTENSITY
+bashlog_level_style_reset [LEVEL]
+```
+
+`LEVEL` accepts the same canonical severity names and integers from `0` through
+`7` accepted by `bashlog_level_set`.  Numeric and named forms address the same
+per-severity style state.
+
+`COLOR` MUST be exactly one of:
+
+```text
+default
+black
+red
+green
+yellow
+blue
+magenta
+cyan
+white
+```
+
+`INTENSITY` MUST be exactly one of:
+
+```text
+normal
+bold
+dim
+```
+
+The default palette is:
+
+| Severity | Color | Intensity | Effective SGR |
+| --- | --- | --- | --- |
+| `emergency` | `red` | `bold` | `1;31` |
+| `alert` | `red` | `bold` | `1;31` |
+| `critical` | `red` | `bold` | `1;31` |
+| `error` | `red` | `normal` | `31` |
+| `warning` | `yellow` | `normal` | `33` |
+| `notice` | `cyan` | `normal` | `36` |
+| `info` | `green` | `normal` | `32` |
+| `debug` | `default` | `dim` | `2` |
+
+Supported foreground color codes are the ordinary ANSI values `30` through `37`.
+`default` contributes no explicit foreground-color code.  Intensity contributes
+no code for `normal`, `1` for `bold`, and `2` for `dim`.  When both intensity and
+foreground color contribute a code, intensity precedes color, for example
+`bold red` -> `1;31`.
+
+A configured style of `default normal` emits no bashlog-owned SGR sequence for
+that severity.  This allows a caller to leave one signifier visually plain even
+while global color mode permits styling.
+
+#### `bashlog_level_style_get`
+
+```text
+bashlog_level_style_get LEVEL
+```
+
+Writes exactly:
+
+```text
+COLOR INTENSITY
+```
+
+followed by one newline for the current style of the selected severity.
+
+For example, under the defaults:
+
+```text
+bashlog_level_style_get critical
+red bold
+```
+
+Return status is `0` on success and `64` for an invalid argument count or level.
+
+#### `bashlog_level_style_set`
+
+```text
+bashlog_level_style_set LEVEL COLOR INTENSITY
+```
+
+Atomically replaces the selected severity's style for subsequent human-rendered
+records.  Invalid level, color, intensity, or argument count returns `64`, emits
+no routine output, and leaves the prior style unchanged.
+
+For example:
+
+```bash
+bashlog_level_style_set error magenta bold
+bashlog_level_style_set warning blue normal
+bashlog_level_style_set debug default normal
+```
+
+Raw ANSI escape sequences, raw numeric SGR fragments, arbitrary attribute lists,
+background colors, 256-color indexes, and RGB/true-color values are not accepted
+by this contract.
+
+#### `bashlog_level_style_reset`
+
+```text
+bashlog_level_style_reset [LEVEL]
+```
+
+With one valid level argument, restores only that severity to the library default
+palette.  With no arguments, restores all eight levels to their library defaults.
+
+More than one argument or an invalid level returns `64` and leaves style state
+unchanged.
+
+#### Style Placement
+
+When styling is enabled, bashlog-owned ANSI applies only to the canonical
+severity token.  The reset sequence immediately follows that token.
+
+Conceptually:
+
+```text
+[TIMESTAMP] STYLE_START LEVEL STYLE_RESET [TAG] [TAG]: MESSAGE
+```
+
+The timestamp, spaces, tags, punctuation, colon, message body, and final newline
+are outside bashlog's severity-style span.
+
+For example, an explicitly human error record with `error=magenta bold` is
+serialized conceptually as:
+
+```text
+\e[1;35merror\e[0m [api]: request failed
+```
+
+Only `error` is styled.  `[api]: request failed` is not.
 
 ## Logging Call Syntax
 
@@ -492,8 +626,10 @@ warning [database]: connection delayed
 [2026-08-30T18:40:00Z] error [api]: request failed
 ```
 
-The canonical lowercase severity is always present.  Color, when enabled,
-decorates only that severity token.
+The canonical lowercase severity is always present.  When global color mode
+permits styling, only that severity token receives the configured per-level
+foreground color and intensity.  bashlog resets SGR state immediately after the
+severity token before tags, punctuation, or message text are appended.
 
 Human rendering preserves representable message bytes according to Bash string
 semantics.  In particular, an embedded newline in the message remains an embedded
@@ -537,6 +673,10 @@ used for `msg`.
 `msg` is always enclosed in double quotes, including an empty message and a
 message that could otherwise be represented as an unquoted token.  This keeps the
 message boundary deterministic.
+
+Per-level severity style configuration has no effect on logfmt bytes.  The
+logfmt renderer never emits bashlog-owned ANSI, regardless of global color mode or
+per-level style state.
 
 ### Logfmt String Escaping
 
@@ -706,6 +846,11 @@ Canonical severity and a bashlog-generated timestamp are library-owned metadata.
 They are not rewritten by the primary redaction transformation.  When a context
 is selected, they are still part of the completed candidate checked by final
 non-transforming verification.
+
+Per-level severity style is library-owned presentation metadata.  It is applied
+only after primary redaction has completed, so styling cannot split or disguise a
+caller value before matching.  Any resulting bashlog-owned ANSI bytes are part of
+the completed candidate seen by final verification when a context is selected.
 
 A pattern is not promised to span multiple logical fields or to depend on
 renderer punctuation that does not exist during primary redaction.
@@ -1177,6 +1322,9 @@ contract promises:
 11. Exact representable multibyte values are supported by the fixed matcher.
 12. All severity helpers converge through the same logging, presentation, and
     optional redaction pipeline.
+13. Caller-configured severity styling is presentation-only, bounded to symbolic
+    values, and cannot cause raw caller-supplied ANSI to enter bashlog through the
+    style API.
 
 ## Explicit Non-Promises
 
@@ -1204,7 +1352,11 @@ The public contract does **not** promise:
 16. automatic discovery of systemd, containers, logging drivers, or other
     deployment infrastructure;
 17. byte-identical `format=auto` output when stderr changes between TTY and
-    non-TTY conditions.
+    non-TTY conditions;
+18. identical visual presentation of color, bold, or dim attributes across
+    terminal emulators and themes;
+19. background colors, arbitrary SGR attributes, 256-color, or RGB style
+    configuration through the initial level-style API.
 
 ## Shell Tracing Boundary
 
@@ -1297,6 +1449,36 @@ Expected standard-error record:
 
 ```text
 warning [database]: connection delayed
+```
+
+### Override One Severity Signifier
+
+```bash
+bashlog_format_set human
+bashlog_color_set always
+bashlog_level_style_set error magenta bold
+bashlog_error --tag api 'request failed'
+```
+
+The human renderer emits the equivalent of:
+
+```text
+\e[1;35merror\e[0m [api]: request failed
+```
+
+Only the canonical `error` token receives bashlog-owned styling.  The tag,
+punctuation, and message remain outside the style span.
+
+Restore the library default for that one severity with:
+
+```bash
+bashlog_level_style_reset error
+```
+
+or restore the complete palette with:
+
+```bash
+bashlog_level_style_reset
 ```
 
 ### Explicit Logfmt Output
@@ -1397,6 +1579,9 @@ The following remain deferred:
 - ambient/global tags;
 - caller-defined render templates;
 - JSON Lines rendering;
+- background-color severity styling;
+- arbitrary ANSI/SGR severity styling;
+- 256-color or RGB/true-color severity styling;
 - context rule listing;
 - individual rule deletion or mutation;
 - context name reuse after destruction;
@@ -1418,10 +1603,18 @@ demonstrate at minimum:
 - Bash 4.3 representative behavior;
 - default presentation state `auto` / `off` / `auto`;
 - atomic validation of presentation setters;
+- default per-level style palette and query behavior;
+- numeric and named level references address the same severity style;
+- per-level style overrides validate atomically;
+- one-level and all-level reset semantics;
+- `default normal` emits no bashlog-owned ANSI for that severity;
 - `format=auto` selects logfmt for non-TTY stderr and human for TTY stderr;
 - explicit human and logfmt selection overrides automatic selection;
-- exact human severity, tag, timestamp, and color behavior;
-- logfmt never contains bashlog-owned ANSI color;
+- exact human severity, tag, timestamp, and style behavior;
+- severity styling is bounded to the canonical signifier and resets immediately
+  afterward;
+- logfmt never contains bashlog-owned ANSI color or intensity, including after a
+  per-level override;
 - exact deterministic logfmt field ordering;
 - exact logfmt escaping for quotes, backslashes, tabs, carriage returns,
   newlines, other ASCII controls, and representative multibyte text;
@@ -1494,6 +1687,7 @@ This accepted specification is derived primarily from:
 - ADR-025: Optional Presentation Metadata, Tags, and Color
 - ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr
   Transport
+- ADR-027: Configurable Severity Token Styles
 
 ADR-026 supersedes the portions of ADR-017 and ADR-024 that assumed primary
 logging redaction transforms a complete rendered `level: message` candidate.
