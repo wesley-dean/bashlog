@@ -137,6 +137,9 @@ BASH
     source "$1"
     for name in \
       bashlog_level_get bashlog_level_set \
+      bashlog_format_get bashlog_format_set \
+      bashlog_timestamp_get bashlog_timestamp_set \
+      bashlog_color_get bashlog_color_set \
       bashlog_log bashlog_debug bashlog_info bashlog_notice \
       bashlog_warning bashlog_error bashlog_critical bashlog_alert \
       bashlog_emergency bashlog_redaction_add \
@@ -161,5 +164,5 @@ BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
-  [ "${stderr}" = 'info: value=[REDACTED]' ]
+  [ "${stderr}" = 'level=info msg="value=[REDACTED]"' ]
 }
