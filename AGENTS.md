@@ -106,16 +106,33 @@ See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
 
 ## Security-Sensitive Work
 
-Redaction architecture is being defined in proposed ADR-018.  Work in that area
-must preserve the distinction between accepted and proposed decisions and should
-not allow implementation experiments to silently choose unresolved semantics.
+ADR-018 proposes the overarching redaction security boundary.  ADR-020 through
+ADR-024 propose the concrete context, rule, matcher, and final-verification
+semantics that refine it.  Work in this area must preserve the distinction
+between accepted and proposed decisions and must not let implementation
+experiments silently choose different behavior.
 
-In particular, open questions around redaction contexts, fixed/glob/ERE matching,
-zero-length regular expressions, rule ordering, context lifecycle, and final
-fixed-secret verification belong in ADRs before they become stable behavior.
+The proposed redaction model includes the following review-critical properties:
+
+- contexts follow an `unseen -> active -> destroyed` lifecycle and are append-only
+  while active;
+- an explicitly requested unknown or destroyed context fails closed;
+- rules explicitly name `fixed`, `glob`, or `ere` and retain registration order;
+- duplicate matcher/pattern pairs are rejected rather than treated as updates;
+- replacement text is always literal, and empty replacement is permitted;
+- `fixed` provides exact literal multibyte matching without Unicode normalization;
+- glob and ERE patterns that can match empty text are rejected;
+- extglob is not part of the initial glob contract;
+- ERE uses Bash `[[ =~ ]]` semantics and invalid EREs are rejected;
+- one ordered transformation pass is followed by non-transforming final
+  verification against every active rule;
+- any remaining match or verification error suppresses output rather than
+  triggering iterative rewriting;
+- and redaction failure diagnostics use a bounded path that never reproduces the
+  failed candidate or protected rule content.
 
 The project explicitly rejects vague trust claims and security through obscurity.
-Read the full redaction and auditability ADRs before implementing the
+Read ADR-018 through ADR-024 and the auditability ADR before implementing the
 security-critical output path.
 
 ## Validation
@@ -139,9 +156,11 @@ companion, and a successful build must not retain a stale `.256` companion for
 the same artifact.
 
 Security-sensitive behavior should use negative tests as well as positive tests.
-For example, future redaction tests should verify not only that the replacement is
-present but also that protected original values do not appear in stdout, stderr,
-or failure diagnostics.
+For redaction, tests should verify not only that the expected replacement is
+present but also that protected originals do not appear in stdout, stderr,
+failure diagnostics, or other observable bashlog sink output.  Cross-rule tests
+should include cases where later replacements reintroduce text protected by
+earlier fixed, glob, or ERE rules and verify fail-closed suppression.
 
 ## Scope Discipline
 
