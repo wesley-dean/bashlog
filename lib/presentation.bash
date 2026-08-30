@@ -211,13 +211,13 @@ __bashlog_format_resolve() {
 ## @fn __bashlog_timestamp_utc()
 ## @brief Generates one UTC timestamp without changing caller timezone state.
 ## @details
-## The function-local `TZ=UTC0` applies only while Bash builtin printf performs
-## the UTC conversion.  The generated value is returned through the shared
-## `__bashlog_timestamp_value` output slot.
+## The function-local exported `TZ=UTC0` applies only while Bash builtin printf
+## performs the UTC conversion.  Bash restores the caller's prior variable value
+## and export state when the function-local variable leaves scope.
 ## @retval 0 UTC timestamp generation succeeded.
 ## @retval 70 Bash builtin time formatting failed.
 __bashlog_timestamp_utc() {
-  local TZ=UTC0
+  local -x TZ=UTC0
 
   if ! printf -v __bashlog_timestamp_value '%(%Y-%m-%dT%H:%M:%SZ)T' -1; then
     __bashlog_timestamp_value=
@@ -230,9 +230,9 @@ __bashlog_timestamp_utc() {
 ## @fn __bashlog_timestamp_acquire()
 ## @brief Generates one optional Bash-native timestamp for an eligible log record.
 ## @details
-## UTC generation delegates to a helper with function-local timezone state.  Local
-## generation does not shadow or assign `TZ`, so it uses the caller's normal local
-## time configuration without modifying it.
+## UTC generation delegates to a helper with function-local exported timezone
+## state.  Local generation does not shadow or assign `TZ`, so it uses the
+## caller's normal local-time environment without modifying it.
 ## @retval 0 A timestamp was generated or timestamping is disabled.
 ## @retval 70 Bash time formatting failed or internal state is invalid.
 __bashlog_timestamp_acquire() {
