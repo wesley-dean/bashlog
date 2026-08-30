@@ -14,7 +14,7 @@ DIST_MIN_SCRIPT := $(DIST_DIR)/$(PROJECT_NAME).min.bash
 DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
-CORE_SOURCE_FILES := lib/level.bash lib/redaction-core.bash lib/redaction.bash lib/logging.bash
+CORE_SOURCE_FILES := lib/level.bash lib/redaction-core.bash lib/redaction.bash lib/presentation.bash lib/logging.bash
 SOURCE_FILES := $(CORE_SOURCE_FILES)
 TEST_SCRIPTS := $(sort $(wildcard tests/contract/*.bats))
 TEST_RESULTS_DIR := test-results
@@ -106,6 +106,7 @@ check:
 	shellcheck lib/level.bash
 	shellcheck -e SC2053 lib/redaction-core.bash
 	shellcheck -e SC2154 lib/redaction.bash
+	shellcheck lib/presentation.bash
 	shellcheck -e SC2059,SC2154 lib/logging.bash
 
 ## Format maintained Bash using the same arguments configured for MegaLinter.
