@@ -1,24 +1,79 @@
 # shellcheck shell=bash
 ## @file lib/level.bash
-## @brief Defines the documented public log-level interface for bashlog.
+## @brief Implements the public log-level interface for bashlog.
 ## @details
-## This module owns the public threshold-query and threshold-update contracts.
-## The active threshold uses the canonical eight-level severity vocabulary
+## This module owns canonical severity validation plus the process-local logging
+## threshold.  The active threshold uses the eight-level severity vocabulary
 ## defined by the public specification, with `info` (`6`) as the initial value.
 ##
-## This file is currently an interface-documentation scaffold.  It is not yet
-## assembled into the generated bashlog artifact.  The placeholder function
-## bodies exist only so the exact `bash-doxygen` documentation can live beside
-## the declarations it will govern before implementation begins.  The bodies
-## will be replaced when the contract tests are activated.
-##
-## The implementation must preserve caller shell state and must not invoke
-## external commands.  Invalid threshold changes are atomic: the previous value
-## remains active when validation fails.
+## The implementation uses Bash language facilities and builtins only.  Invalid
+## threshold changes are atomic: the previous value remains active when
+## validation fails.
 ## @see doc/bashlog-spec.md
 ## @see doc/adr/ADR-002-bash-runtime-and-portability-baseline.md
 ## @see doc/adr/ADR-014-pure-bash-runtime-and-external-command-boundary.md
 ## @see doc/adr/ADR-017-logging-pipeline-levels-formatting-and-emission.md
+
+declare -g __bashlog_active_level=6
+declare -g __bashlog_level_number=
+
+## @fn __bashlog_level_to_number()
+## @brief Resolves one canonical severity name or number to its numeric value.
+## @details
+## Validate exactly one severity token and write the normalized numeric value to
+## `__bashlog_level_number`.  Canonical names are case-sensitive and aliases are
+## intentionally rejected.
+## @param level Canonical severity name or integer from 0 through 7.
+## @retval 0 The level was valid and `__bashlog_level_number` was updated.
+## @retval 64 The argument count or level value was invalid.
+__bashlog_level_to_number() {
+  if (( $# != 1 )); then
+    return 64
+  fi
+
+  case $1 in
+    emergency | 0) __bashlog_level_number=0 ;;
+    alert | 1) __bashlog_level_number=1 ;;
+    critical | 2) __bashlog_level_number=2 ;;
+    error | 3) __bashlog_level_number=3 ;;
+    warning | 4) __bashlog_level_number=4 ;;
+    notice | 5) __bashlog_level_number=5 ;;
+    info | 6) __bashlog_level_number=6 ;;
+    debug | 7) __bashlog_level_number=7 ;;
+    *) return 64 ;;
+  esac
+
+  return 0
+}
+
+## @fn __bashlog_level_to_name()
+## @brief Resolves one numeric severity to its canonical lowercase name.
+## @details
+## Write the canonical name to `__bashlog_level_name`.  This helper is internal
+## and expects a normalized numeric level from 0 through 7.
+## @param level Numeric severity from 0 through 7.
+## @retval 0 The level was valid and `__bashlog_level_name` was updated.
+## @retval 64 The argument count or numeric level was invalid.
+declare -g __bashlog_level_name=
+__bashlog_level_to_name() {
+  if (( $# != 1 )); then
+    return 64
+  fi
+
+  case $1 in
+    0) __bashlog_level_name=emergency ;;
+    1) __bashlog_level_name=alert ;;
+    2) __bashlog_level_name=critical ;;
+    3) __bashlog_level_name=error ;;
+    4) __bashlog_level_name=warning ;;
+    5) __bashlog_level_name=notice ;;
+    6) __bashlog_level_name=info ;;
+    7) __bashlog_level_name=debug ;;
+    *) return 64 ;;
+  esac
+
+  return 0
+}
 
 ## @fn bashlog_level_get()
 ## @brief Writes the active canonical bashlog severity threshold.
@@ -43,8 +98,12 @@
 ## @endcode
 ## @see bashlog_level_set()
 bashlog_level_get() {
-  # Non-runtime documentation scaffold.  Implementation replaces this body.
-  return 70
+  if (( $# != 0 )); then
+    return 64
+  fi
+
+  __bashlog_level_to_name "${__bashlog_active_level}" || return 64
+  printf '%s\n' "${__bashlog_level_name}"
 }
 
 ## @fn bashlog_level_set()
@@ -73,6 +132,14 @@ bashlog_level_get() {
 ## @endcode
 ## @see bashlog_level_get()
 bashlog_level_set() {
-  # Non-runtime documentation scaffold.  Implementation replaces this body.
-  return 70
+  local candidate
+
+  if (( $# != 1 )); then
+    return 64
+  fi
+
+  __bashlog_level_to_number "$1" || return 64
+  candidate=${__bashlog_level_number}
+  __bashlog_active_level=${candidate}
+  return 0
 }
