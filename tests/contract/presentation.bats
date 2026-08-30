@@ -45,6 +45,83 @@ BASH
   [ -z "${stderr}" ]
 }
 
+@test "default severity style palette is documented and queryable" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    for level in emergency alert critical error warning notice info debug; do
+      printf '%s=%s\n' "${level}" "$(bashlog_level_style_get "${level}")" || exit
+    done
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = $'emergency=red bold\nalert=red bold\ncritical=red bold\nerror=red normal\nwarning=yellow normal\nnotice=cyan normal\ninfo=green normal\ndebug=default dim' ]
+  [ -z "${stderr}" ]
+}
+
+@test "severity style getter accepts numeric and named forms for same level" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    printf '%s\n' "$(bashlog_level_style_get critical)" "$(bashlog_level_style_get 2)"
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = $'red bold\nred bold' ]
+  [ -z "${stderr}" ]
+}
+
+@test "severity style setter overrides color and intensity atomically" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_level_style_set error magenta bold || exit
+    before="$(bashlog_level_style_get error)" || exit
+    bashlog_level_style_set error ultraviolet bold
+    bad_color_status=$?
+    after_bad_color="$(bashlog_level_style_get error)" || exit
+    bashlog_level_style_set error cyan blinking
+    bad_intensity_status=$?
+    after_bad_intensity="$(bashlog_level_style_get error)" || exit
+    printf '%s|%s|%s|%s|%s\n' \
+      "${before}" "${bad_color_status}" "${after_bad_color}" \
+      "${bad_intensity_status}" "${after_bad_intensity}"
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = 'magenta bold|64|magenta bold|64|magenta bold' ]
+  [ -z "${stderr}" ]
+}
+
+@test "severity style reset restores one level without changing another" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_level_style_set error magenta bold || exit
+    bashlog_level_style_set warning blue dim || exit
+    bashlog_level_style_reset error || exit
+    printf '%s|%s\n' \
+      "$(bashlog_level_style_get error)" \
+      "$(bashlog_level_style_get warning)"
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = 'red normal|blue dim' ]
+  [ -z "${stderr}" ]
+}
+
+@test "severity style reset with no level restores complete default palette" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_level_style_set emergency white normal || exit
+    bashlog_level_style_set debug red bold || exit
+    bashlog_level_style_reset || exit
+    printf '%s|%s\n' \
+      "$(bashlog_level_style_get emergency)" \
+      "$(bashlog_level_style_get debug)"
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = 'red bold|default dim' ]
+  [ -z "${stderr}" ]
+}
+
 @test "default auto format uses logfmt when stderr is not a TTY" {
   run_bashlog_script <<'BASH'
     source "$1"
@@ -94,6 +171,63 @@ BASH
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
   [ "${stderr}" = $'\033[32minfo\033[0m: application started' ]
+}
+
+@test "critical defaults to bold red and reset immediately follows severity" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_format_set human || exit
+    bashlog_color_set always || exit
+    bashlog_critical --tag storage 'filesystem unavailable'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ "${stderr}" = $'\033[1;31mcritical\033[0m [storage]: filesystem unavailable' ]
+}
+
+@test "overridden severity style changes only the signifier" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_format_set human || exit
+    bashlog_color_set always || exit
+    bashlog_level_style_set error magenta bold || exit
+    bashlog_error --tag api 'request failed'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ "${stderr}" = $'\033[1;35merror\033[0m [api]: request failed' ]
+}
+
+@test "default normal style emits no bashlog-owned ANSI bytes for that severity" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_format_set human || exit
+    bashlog_color_set always || exit
+    bashlog_level_style_set warning default normal || exit
+    bashlog_warning 'plain signifier'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ "${stderr}" = 'warning: plain signifier' ]
+  [[ "${stderr}" != *$'\033['* ]]
+}
+
+@test "logfmt ignores per-level style overrides even when color is always" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_format_set logfmt || exit
+    bashlog_color_set always || exit
+    bashlog_level_style_set error magenta bold || exit
+    bashlog_error 'request failed'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ "${stderr}" = 'level=error msg="request failed"' ]
+  [[ "${stderr}" != *$'\033['* ]]
 }
 
 @test "human color auto emits no ANSI when stderr is not a TTY" {
