@@ -44,7 +44,7 @@
 ## Bash builtin printf semantics.
 ## @param level Canonical severity name: emergency, alert, critical, error,
 ## warning, notice, info, or debug.
-## @param ... Optional `--context CONTEXT`, optional `--`, FORMAT, and printf
+## @param args Optional `--context CONTEXT`, optional `--`, FORMAT, and printf
 ## arguments as defined by the public specification.
 ## @par Standard Output
 ## No routine output.
@@ -87,7 +87,7 @@ bashlog_log() {
 ## Equivalent in logging behavior to `bashlog_log debug ...`.  Debug is severity
 ## 7 and is suppressed by the default `info` threshold.  This helper must not
 ## introduce an alternate formatting, redaction, verification, or emission path.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -116,7 +116,7 @@ bashlog_debug() {
 ## and is eligible under the default `info` threshold.  This helper shares the
 ## generic logger's context, formatting, redaction, verification, and sink
 ## semantics.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -146,7 +146,7 @@ bashlog_info() {
 ## severity 5.  The helper delegates to the same threshold, formatting,
 ## redaction, final-verification, and standard-error emission contract as the
 ## generic logger.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -175,7 +175,7 @@ bashlog_notice() {
 ## severity 4.  `bashlog_warning` is the canonical namespaced spelling; `warn`
 ## and other abbreviated aliases are intentionally application-owned rather than
 ## installed by bashlog.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -204,7 +204,7 @@ bashlog_warning() {
 ## Equivalent in logging behavior to `bashlog_log error ...`.  Error is severity
 ## 3.  Logging an error does not install traps, exit the caller, or otherwise
 ## adopt application control-flow policy.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -232,7 +232,7 @@ bashlog_error() {
 ## Equivalent in logging behavior to `bashlog_log critical ...`.  Critical is
 ## severity 2.  The full canonical spelling is the supported namespaced API;
 ## abbreviations such as `crit` are not installed by the initial library.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -261,7 +261,7 @@ bashlog_critical() {
 ## Equivalent in logging behavior to `bashlog_log alert ...`.  Alert is severity
 ## 1 and uses the same final redaction and standard-error sink boundary as every
 ## other supported severity.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
@@ -289,7 +289,7 @@ bashlog_alert() {
 ## Equivalent in logging behavior to `bashlog_log emergency ...`.  Emergency is
 ## severity 0 and therefore remains eligible at every valid threshold.  This
 ## helper logs only; it does not terminate the caller or install error handling.
-## @param ... Optional context/option syntax, FORMAT, and printf arguments as
+## @param args Optional context/option syntax, FORMAT, and printf arguments as
 ## accepted by bashlog_log().
 ## @par Standard Output
 ## No routine output.
