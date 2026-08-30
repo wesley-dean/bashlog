@@ -27,20 +27,56 @@
 ## @see doc/adr/ADR-023-glob-and-ere-redaction-semantics.md
 ## @see doc/adr/ADR-024-final-redaction-verification-and-fail-closed-output.md
 
+## @var __bashlog_context_names
+## @brief Ordered context-name table; destroyed names remain as non-secret tombstones.
 declare -ga __bashlog_context_names=()
+
+## @var __bashlog_context_states
+## @brief Lifecycle state parallel to `__bashlog_context_names`.
 declare -ga __bashlog_context_states=()
+
+## @var __bashlog_context_count
+## @brief Number of context slots created during the current Bash process.
 declare -g __bashlog_context_count=0
+
+## @var __bashlog_context_index
+## @brief Internal output slot used by context lookup and resolution helpers.
 declare -g __bashlog_context_index=-1
 
+## @var __bashlog_rule_contexts
+## @brief Context indexes for globally registration-ordered redaction rules.
 declare -ga __bashlog_rule_contexts=()
+
+## @var __bashlog_rule_matchers
+## @brief Matcher names parallel to the ordered rule table.
 declare -ga __bashlog_rule_matchers=()
+
+## @var __bashlog_rule_patterns
+## @brief Secret-bearing matcher patterns parallel to the ordered rule table.
 declare -ga __bashlog_rule_patterns=()
+
+## @var __bashlog_rule_replacements
+## @brief Literal replacements parallel to the ordered rule table.
 declare -ga __bashlog_rule_replacements=()
+
+## @var __bashlog_rule_count
+## @brief Number of rule slots allocated during the current Bash process.
 declare -g __bashlog_rule_count=0
 
+## @var __bashlog_match_start
+## @brief Internal output slot containing a selected match start character offset.
 declare -g __bashlog_match_start=-1
+
+## @var __bashlog_match_length
+## @brief Internal output slot containing a selected consuming match length.
 declare -g __bashlog_match_length=0
+
+## @var __bashlog_transform_result
+## @brief Internal output slot containing the most recent transformation result.
 declare -g __bashlog_transform_result=
+
+## @var __bashlog_redacted_result
+## @brief Internal output slot containing a candidate that passed final verification.
 declare -g __bashlog_redacted_result=
 
 ## @fn __bashlog_context_name_valid()
@@ -49,10 +85,20 @@ declare -g __bashlog_redacted_result=
 ## Context names are deliberately restricted to the ASCII identifier grammar
 ## `[A-Za-z_][A-Za-z0-9_.:-]*` so they remain identifiers rather than arbitrary
 ## shell text.
+##
+## Bash ERE range expressions are locale-sensitive.  A bare `[A-Za-z]` check in
+## the caller's locale can therefore admit characters outside ASCII in locales
+## whose collation sequence places additional characters inside those ranges.
+## Context identifiers are not glob/ERE payloads and do not inherit the pattern
+## matchers' caller-locale contract.  This validator uses a function-local C
+## locale so the documented ASCII grammar has the same meaning in every caller
+## locale without changing locale state after the function returns.
 ## @param context Proposed context identifier.
 ## @retval 0 The context identifier is valid.
 ## @retval 1 The context identifier is invalid.
 __bashlog_context_name_valid() {
+  local LC_ALL=C
+
   if (( $# != 1 )); then
     return 1
   fi
