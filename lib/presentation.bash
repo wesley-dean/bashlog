@@ -330,11 +330,11 @@ __bashlog_logfmt_quote() {
   for ((index = 0; index < length; index++)); do
     character=${value:index:1}
     case ${character} in
-      '\\') result+='\\\\' ;;
-      '"') result+='\\"' ;;
-      $'\t') result+='\\t' ;;
-      $'\r') result+='\\r' ;;
-      $'\n') result+='\\n' ;;
+      '\\') result+='\\' ;;
+      '"') result+='\"' ;;
+      $'\t') result+='\t' ;;
+      $'\r') result+='\r' ;;
+      $'\n') result+='\n' ;;
       *)
         encoded=0
         for ((code = 1; code < 32; code++)); do
@@ -350,9 +350,9 @@ __bashlog_logfmt_quote() {
           fi
         done
         if (( ! encoded )); then
-          printf -v control '%b' '\\x7F'
+          printf -v control '%b' '\x7F'
           if [[ ${character} == "${control}" ]]; then
-            result+='\\u007F'
+            result+='\u007F'
           else
             result+=${character}
           fi
