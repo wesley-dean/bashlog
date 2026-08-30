@@ -283,3 +283,13 @@ the severity signifier, resets immediately after it, is independently resettable
 accepts no raw ANSI/SGR input, and never affects logfmt output.
 
 See [ADR-027](adr/ADR-027-configurable-severity-token-styles.md).
+
+### ADR-028: Generate Committed ADR Navigation with a Pinned adrctl Documentation Dependency
+
+bashlog uses a pinned, bashdeps-managed adrctl artifact only for documentation to
+generate the committed `doc/adr/README.md` landing page from the ADR corpus plus
+maintained framing fragments.  `make docs` remains offline after dependency
+preparation, generated README replacement is atomic, and adrctl remains outside
+all consumer artifacts and runtime behavior.
+
+See [ADR-028](adr/ADR-028-generate-committed-adr-navigation-with-pinned-adrctl.md).
