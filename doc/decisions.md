@@ -269,9 +269,11 @@ See [ADR-025](adr/ADR-025-optional-presentation-metadata-tags-and-color.md).
 ### ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr Transport
 
 Standard error remains the universal sink, while `format=auto` would select human
-output when fd 2 is a TTY and deterministic logfmt when it is not.  bashlog would
-not detect systemd, Docker, Podman, containers, or other deployment infrastructure;
-severity remains durable textual data in both renderers, and renderer encoding
-must not weaken registered redaction policy.
+output when fd 2 is a TTY and deterministic logfmt when it is not.  Redaction
+remains explicit and developer-owned: callers may invoke `bashlog_redact`
+directly or pass `--context CONTEXT` to a logging call, with `--` terminating
+logging options when needed; bashlog does not infer sensitivity, apply ambient
+contexts, or detect systemd, Docker, Podman, containers, or other deployment
+infrastructure.
 
 See [ADR-026](adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md).
