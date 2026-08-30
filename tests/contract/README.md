@@ -2,7 +2,8 @@
 
 This directory contains the active behavior and security tests derived from the
 Accepted `doc/bashlog-spec.md` and the governing ADR corpus, including the
-presentation and adaptive-rendering decisions in ADR-025 and ADR-026.
+presentation, adaptive-rendering, and severity-style decisions in ADR-025 through
+ADR-027.
 
 The suite is the executable public contract used by the Makefile, CI, and release
 validation.  Implementation changes are expected to satisfy these tests; the
@@ -34,9 +35,10 @@ is that every artifact receives the same complete contract suite.
   order, and emission errors.  These tests force plain human rendering when the
   renderer is not the behavior under test.
 - `presentation.bats`: presentation defaults and setters, adaptive non-TTY
-  logfmt, explicit human/logfmt rendering, tags, color boundaries, timestamps,
-  exact logfmt escaping, caller-managed and logger-managed redaction workflows,
-  and final verification after rendering.
+  logfmt, explicit human/logfmt rendering, tags, global color boundaries,
+  per-severity symbolic styles and resets, severity-token-only ANSI placement,
+  timestamps, exact logfmt escaping, caller-managed and logger-managed redaction
+  workflows, and final verification after rendering.
 - `redaction-contexts.bats`: context creation, append-only lifecycle, destruction,
   tombstones, duplicate handling, and fail-closed context selection.
 - `redaction-fixed.bats`: exact literal fixed matching, occurrence progression,
@@ -50,9 +52,9 @@ is that every artifact receives the same complete contract suite.
   replacement-as-data behavior, and negative disclosure assertions.  These tests
   force plain human rendering where presentation is not the contract under test.
 - `compat-bash43.bash`: representative public behavior under Bash 4.3, including
-  presentation configuration, human/logfmt rendering, Bash-native timestamps,
-  logging redaction, standalone redaction, context destruction, and fail-closed
-  verification.
+  presentation configuration, severity style lookup/override/reset, exact styled
+  human output, human/logfmt rendering, Bash-native timestamps, logging redaction,
+  standalone redaction, context destruction, and fail-closed verification.
 
 ## Test Environment
 
@@ -132,6 +134,22 @@ Tests also prove the inverse: merely registering a context does not make it
 ambient.  A logging call that omits `--context` is not inspected against unrelated
 registered contexts.
 
+## Presentation Style Coverage
+
+Global color policy and per-level appearance are tested as separate dimensions.
+`never|auto|always` decides whether human styling may be emitted; the level-style
+API decides the foreground color and `normal|bold|dim` intensity of the canonical
+severity token.
+
+Tests verify the complete default palette, numeric/name equivalence, atomic
+invalid setters, one-level and all-level reset behavior, and `default normal` as
+a deliberately unstyled signifier.  Exact output assertions prove that the ANSI
+reset immediately follows the severity token, so tags, punctuation, and message
+text remain outside bashlog-owned styling.
+
+The logfmt tests assert the complementary invariant: per-level style overrides and
+`color=always` still produce no bashlog-owned ANSI in machine-oriented output.
+
 ## Negative Security Assertions
 
 Security tests should prove forbidden behavior did not occur, not only that an
@@ -158,8 +176,9 @@ metadata; the final non-transforming check suppresses the completed record.
 
 `compat-bash43.bash` is intentionally smaller than the full Bats suite.  It is a
 representative runtime compatibility contract covering sourcing, levels,
-presentation configuration, human/logfmt rendering, timestamps, logging,
-fixed/glob/ERE redaction, context destruction, and final fail-closed verification.
+presentation configuration, severity style configuration/rendering,
+human/logfmt rendering, timestamps, logging, fixed/glob/ERE redaction, context
+destruction, and final fail-closed verification.
 
 CI and release validation execute it against all three generated artifacts inside
 a Bash 4.3 container.
