@@ -9,7 +9,7 @@ GENERATE_MAN           = NO
 GENERATE_RTF           = NO
 GENERATE_XML           = NO
 INPUT                  = lib \
-                         doc/adr
+                         doc
 RECURSIVE              = YES
 FILE_PATTERNS          = *.bash \
                          *.sh \
