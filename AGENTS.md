@@ -18,7 +18,7 @@ Before consequential work:
    informs areas not already governed by a more specific Accepted ADR.
 3. Read `doc/decisions.md` for the concise architectural map.
 4. Read the full ADRs governing the area you intend to change; use
-   `doc/adr/README.md` as the generated index.
+   `doc/adr/README.md` as the index.
 5. Read `doc/bashlog-spec.md` before changing public behavior.  The specification
    is the Accepted normative public contract.
 6. Read `doc/threat-model.md` before changing dependencies, sensitive-data flow,
@@ -63,10 +63,6 @@ recorded in ADRs or the public contract defined by the specification.
 - `doc/bashlog-spec.md`: Accepted normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
 - `doc/adr/`: Accepted architectural decision records and their full reasoning.
-- `doc/adr/README.intro.md` and `doc/adr/README.outro.md`: maintained framing for
-  the generated ADR directory landing page.
-- `doc/adr/README.md`: generated, committed ADR navigation; regenerate with
-  `make adr-index` rather than editing its ADR list directly.
 - `doc/threat-model.md`: maintained threat model and Mermaid trust-boundary/data-
   flow diagram.
 - `doc/reference/`: generated Doxygen output; never commit it.
@@ -92,10 +88,7 @@ not as a command dispatcher.
 - `make test` builds and runs the active Bats contract against every artifact.
 - `make test-report` repeats the artifact matrix and writes JUnit XML under
   `test-results/`.
-- `make adr-index` is offline and regenerates the committed `doc/adr/README.md`
-  using prepared `vendor/adrctl.bash` plus maintained intro/outro fragments.
-- `make docs` is offline, regenerates the ADR index, and consumes the prepared
-  `bash-doxygen` filter to generate ephemeral Doxygen reference output.
+- `make docs` is offline and consumes the prepared `bash-doxygen` filter.
 
 bashdeps manages repository dependencies such as scripts, filters, and assets.  It
 does not install system tools or operating-system packages.
@@ -127,63 +120,263 @@ dist/bashlog.min.bash
 dist/bashlog.min.bash.sha256
 ```
 
-All three distribution artifacts expose the same public API and runtime contract.
-The development artifact retains maintained comments, the ordinary artifact strips
-full-line comments, and the minified artifact applies the pinned Bash-Minifier.
-Generated artifacts are products and must be tested directly.
+The three executable artifacts must exhibit equivalent public behavior and must
+remain usable after `vendor/` is removed.  `.sha256` is the current checksum
+companion extension; successful builds must not leave stale `.256` companions for
+current artifacts.
 
-## Public API Boundary
+See ADR-003, ADR-005, ADR-006, ADR-012, and ADR-016.
 
-The supported public API consists of documented `bashlog_*` functions and
-project metadata variables explicitly identified by the specification.  Names
-beginning `__bashlog_` are internal implementation details and are not compatibility
-commitments.
+## Public API Contract
 
-Source-time behavior is intentionally non-invasive.  Do not add shell-option
-changes, traps, network access, filesystem mutation, generic aliases/functions,
-automatic secret discovery, dynamic plugin loading, or runtime external commands
-without a new Accepted architectural decision.
+The Accepted public surface is:
 
-## Security-Relevant Invariants
+```text
+bashlog_level_get
+bashlog_level_set
 
-- redaction policy is developer-defined rather than inferred;
-- once an accepted context is explicitly selected, redaction is fail-closed;
-- replacement text is always literal;
-- primary logger-managed redaction protects semantic caller fields before
-  presentation;
-- the final rendered candidate is verified again before emission;
-- the human renderer and logfmt renderer have different control-byte handling,
-  which is documented as residual risk rather than hidden;
-- caller-side xtrace can expose arguments before bashlog receives them;
-- same-process hostile code and secure memory erasure are not claimed boundaries;
-- every added dependency is new trusted code and must be reviewed as such.
+bashlog_format_get
+bashlog_format_set
+bashlog_timestamp_get
+bashlog_timestamp_set
+bashlog_color_get
+bashlog_color_set
+bashlog_level_style_get
+bashlog_level_style_set
+bashlog_level_style_reset
 
-Do not broaden a security promise merely because current implementation behavior
-appears stronger than the documented contract.  Update the governing ADR,
-specification, threat model, tests, and implementation deliberately when changing
-a security boundary.
+bashlog_log
+bashlog_debug
+bashlog_info
+bashlog_notice
+bashlog_warning
+bashlog_error
+bashlog_critical
+bashlog_alert
+bashlog_emergency
 
-## Documentation Rules
+bashlog_redaction_add
+bashlog_redaction_context_destroy
+bashlog_redact
+```
 
-Consequential architectural changes require an ADR.  Public behavior changes
-require a synchronized specification update.  Maintained Bash comments must use
-the exact syntax and structure documented in `doc/documentation-standard.md`.
+Important public semantics include:
 
-`doc/adr/README.md` is a generated, committed navigation surface.  Change its
-stable prose through `README.intro.md` or `README.outro.md`, change ADR titles in
-the governing ADR files, then regenerate with `make adr-index`.  Do not maintain a
-second hand-written ADR title list.
+- Bash 4.3 is the minimum runtime.
+- Runtime library behavior uses Bash language facilities and builtins only; it
+  invokes no external commands.
+- The default logging threshold is `info`.
+- Canonical severity names are full names rather than short aliases.
+- Routine logging goes to standard error; standard output remains an application
+  data channel.
+- `bashlog_redact` writes successful transformed output to standard output without
+  adding a newline.
+- Logging calls select redaction explicitly with `--context CONTEXT`; there is no
+  ambient current context and registered contexts remain inert until invoked.
+- Callers may alternatively invoke `bashlog_redact` themselves before ordinary
+  logging; both redaction workflows are first-class public behavior.
+- `--` terminates bashlog logging-option parsing when a format string could be
+  interpreted as an option.
+- The default format mode is `auto`: TTY stderr selects human rendering and
+  non-TTY stderr selects deterministic logfmt.
+- Timestamp mode defaults to `off`; `utc` and `local` use Bash-native time
+  formatting without external `date`.
+- Color mode defaults to `auto`; `never|auto|always` decides whether human
+  severity styling may be emitted.
+- bashlog-owned style applies only to the canonical severity token and resets
+  immediately after that token.  Timestamp, tags, punctuation, and message text
+  remain outside the style span.
+- Per-level style is symbolic and configurable with foreground color plus
+  `normal|bold|dim`; raw ANSI/SGR input is not accepted.
+- Default styles are emergency/alert/critical bold red, error red, warning
+  yellow, notice cyan, info green, and debug dim in the terminal default
+  foreground.
+- The logfmt renderer never contains bashlog-owned ANSI regardless of color or
+  per-level style configuration.
+- Repeatable `--tag TAG` metadata uses the documented ASCII token grammar and
+  preserves caller order.
+- Automatic host/deployment metadata, caller-selected file descriptors, syslog,
+  network sinks, and `bashlog_die` remain outside the contract.
+- Shared public return statuses are defined in `doc/bashlog-spec.md`.
 
-Prefer durable invariants over mutable snapshots.  Do not document exact test
-counts, generated line counts, or other values that become false when ordinary
-maintenance changes an implementation detail without changing the contract.
+Do not expand the public surface merely because an internal helper is convenient
+to expose.  New public functions are compatibility commitments and require
+intentional specification, documentation, tests, and architectural review where
+appropriate.
 
-## Release Posture
+See ADR-025, ADR-026, ADR-027, and `doc/bashlog-spec.md` for presentation details.
 
-Releases are created only after the exact intended source revision and artifacts
-have passed the required validation.  Current checksum companions use `.sha256`;
-historical `.256` assets may be read only through documented compatibility
-fallback behavior.
+## Documentation Standard
 
-Read `doc/release-verification.md` before changing tag timing, checksum handling,
-artifact publication, attestation, or dependency provenance behavior.
+Bash source is documentation-first and intentionally verbose.  Doxygen comments
+are architecture at implementation scope, not decorative prose.
+
+The exact syntax is mandatory and compatible with `bash-doxygen`:
+
+- Doxygen comment lines begin with `##`.
+- Files use `@file`, `@brief`, and substantive `@details` blocks.
+- Significant functions use `@fn`, `@brief`, `@details`, named `@param` entries,
+  output behavior, return statuses, examples, warnings, and references as
+  applicable.
+- Significant documented variables use `@var` where appropriate.
+- Structural comment blocks remain contiguous with the declaration they document
+  so `bash-doxygen` can associate and validate them correctly.
+
+Do not substitute a merely similar comment style.  The structure is a project
+requirement.
+
+Do not reduce maintained-source documentation merely to make source shorter.  The
+ordinary and minified artifacts remove or compress comment-only source, while
+`bashlog.dev.bash` intentionally preserves the maintenance narrative.
+
+Security-sensitive internal helpers require substantive comments.  Explain
+matcher progression, quoting, shell-option interactions, ordering, failure
+behavior, process/runtime limitations, and any non-obvious Bash semantics that a
+reviewer would otherwise need to reconstruct.
+
+Public-function Doxygen documentation must agree with `doc/bashlog-spec.md` on
+arguments, streams, statuses, and failure behavior.  A disagreement is a defect
+to investigate, not an instruction to rewrite whichever document is easiest.
+
+See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
+
+## Security-Sensitive Work
+
+ADR-018 governs the overarching redaction security boundary.  ADR-020 through
+ADR-024 govern context lifecycle, rule registration, matcher semantics, and the
+final fail-closed output boundary.  ADR-026 defines the semantic-data-before-
+presentation ordering for logger-managed redaction.  `doc/threat-model.md`
+consolidates those decisions with the project's broader assets, trust boundaries,
+dependency and supply-chain considerations, downstream rendering risks, and
+residual non-promises.
+
+Review-critical properties include:
+
+- contexts follow `unseen -> active -> destroyed` and are append-only while
+  active;
+- an explicitly requested unknown or destroyed context fails closed;
+- rules explicitly name `fixed`, `glob`, or `ere` and preserve successful
+  registration order;
+- duplicate matcher/pattern pairs are rejected rather than treated as updates;
+- replacement text is always literal, and empty replacement is permitted;
+- `fixed` provides exact literal multibyte matching without Unicode
+  normalization;
+- glob and ERE patterns capable of matching empty text are rejected;
+- extglob is outside the initial glob contract;
+- ERE uses Bash `[[ =~ ]]` semantics and invalid EREs are rejected;
+- one ordered transformation pass is followed by non-transforming verification;
+- logger-managed primary redaction operates on the fully formatted message and
+  each caller-supplied tag before renderer quoting, punctuation, or ANSI styling;
+- a context-protected completed record receives final non-transforming
+  verification after rendering and before stderr emission;
+- any remaining match or verification error suppresses output rather than
+  triggering iterative rewriting;
+- the only redaction-failure diagnostic candidate is
+  `bashlog: message suppressed`, and it must itself satisfy active policy before
+  emission;
+- no public operation returns secret-bearing registered rules;
+- context destruction is not secure memory erasure;
+- caller-side xtrace can expose expanded arguments before bashlog gains control.
+
+Changes that add dependencies, alter data-egress behavior, expand output sinks,
+change sensitive-data interpretation, or move trust boundaries should revisit the
+threat model even when the redaction algorithms themselves are unchanged.
+
+### Presentation Boundary
+
+Presentation is downstream of primary redaction.  Human punctuation, logfmt
+serialization, and ANSI severity styling must never become mechanisms by which
+bashlog discovers sensitive data.
+
+Global color policy and per-level appearance are separate.  `bashlog_color_set`
+controls whether styling may be emitted; `bashlog_level_style_set` controls the
+symbolic color and intensity of a severity token when styling is allowed.  Raw
+ANSI is deliberately excluded from the public style configuration surface.
+
+The ANSI reset must immediately follow the severity token.  Do not widen the
+bashlog-owned style span to timestamps, tags, punctuation, or message content
+without a new architectural decision.
+
+### Ambient Shell State
+
+Bash's `nocasematch` option affects both `[[ string == pattern ]]` and
+`[[ string =~ regex ]]`, while bashlog's glob and ERE contract is case-sensitive.
+The matcher implementation therefore preserves the caller's prior `nocasematch`
+state, temporarily disables it only around the individual Bash-native comparison,
+and restores the prior state before returning.  Tests explicitly exercise this
+behavior.
+
+The library does not change caller locale.  Glob and ERE semantics remain subject
+to Bash/libc locale behavior documented by the specification.  The `fixed`
+matcher remains the recommended mode for exact known multibyte secrets.
+
+### ERE Match Location
+
+Bash 4.3 exposes matched ERE text through `BASH_REMATCH` but does not provide a
+portable match-offset API.  The implementation must not locate a selected match
+by searching for the first literal copy of `BASH_REMATCH[0]`; that would be wrong
+for anchored expressions when identical text appears earlier.
+
+`lib/redaction-core.bash` therefore determines candidate start positions against
+the original rule input and forces the ERE to begin at each candidate position,
+preserving whole-input `^` and `$` semantics.  Anchored ERE regression tests are
+part of the active suite.  Changes to this algorithm deserve security-sensitive
+review.
+
+## Validation
+
+Use the smallest relevant set first, then the full project contract:
+
+```text
+make check
+make test
+make test-report
+make docs
+make deps-check
+```
+
+`make check` validates every maintained runtime module.  Its ShellCheck exclusions
+are narrowly scoped in the Makefile and document intentional language use:
+
+- SC2053 for the dynamic right-hand Bash glob matcher;
+- SC2059 for the documented caller-supplied `printf` format string;
+- SC2154 where a module consumes globals declared by an earlier module in the
+  explicit assembly order.
+
+Do not broaden these exclusions casually.  Narrow inline SC2154 suppressions are
+appropriate where presentation code deliberately consumes level-normalization
+output declared by the earlier `lib/level.bash` module.
+
+The active Bats suite under `tests/contract/` runs against development, ordinary,
+and minified artifacts.  Security-sensitive tests use negative assertions as well
+as positive assertions: protected originals must not appear in standard output,
+standard error, failure diagnostics, or alternate severity paths.
+
+Presentation tests must verify exact ANSI placement when color is forced,
+including that only the severity token is styled and that logfmt contains no
+bashlog-owned ANSI.  The Bash 4.3 fixture exercises representative style getters,
+overrides, resets, and rendered style behavior across every generated artifact.
+
+Contract child programs are passed to clean Bash processes through standard input
+with `bash -s -- ...` rather than embedded inside another single-quoted
+`bash -c` program.  This preserves quotes, substitutions-as-data, Unicode, and
+pattern syntax exactly as the fixture expresses them.
+
+`tests/contract/compat-bash43.bash` is run against all three generated artifacts
+inside Bash 4.3 in CI and release validation.  If a correct and auditable
+implementation can no longer satisfy the Accepted contract on Bash 4.3, revisit
+ADR-002 explicitly rather than weakening the tests or hiding version-dependent
+behavior.
+
+## Scope Discipline
+
+Prefer the smallest coherent change that satisfies the governing decision.  Do
+not mix unrelated cleanup into functional work.  Record useful but orthogonal
+ideas separately rather than expanding scope without acknowledgment.
+
+When changing architecture, update or add an ADR before or with implementation.
+Update `doc/decisions.md` when the operative decision changes.  When changing
+observable public behavior, update `doc/bashlog-spec.md` before or with the
+implementation, Doxygen contracts, and tests.  Compare completed work back
+against the governing ADR constraints so locally correct changes do not create
+architectural drift.

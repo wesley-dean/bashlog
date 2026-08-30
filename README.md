@@ -1,89 +1,142 @@
 # bashlog
 
-`bashlog` is a small, sourceable Bash logging library with explicit severity,
-formatting, presentation, and opt-in redaction controls.  It is designed to be
-embedded into shell tooling without taking over application policy or runtime
-control flow.
+bashlog is a sourceable pure-Bash logging library built around predictable
+behavior, explicit developer-owned redaction, and a small auditable runtime.
 
-The project prioritizes explicit contracts, readable implementation, developer
-agency, Bash 4.3 portability, and bounded security claims.  Consumer runtime uses
-Bash language facilities and builtins only; repository tooling may use explicit,
-pinned development dependencies.
+The project is currently **pre-release**.  It targets Bash 4.3 or newer and uses
+only Bash language facilities and builtins at runtime.
 
 ## Quick Start
 
-Source one generated artifact:
+Source a built or pinned bashlog artifact, then log normally:
 
 ```bash
-source ./dist/bashlog.bash
+source "${project_root}/vendor/bashlog.bash"
+
+bashlog_info "Application started."
+bashlog_warning 'Configuration file %s is deprecated' "${config_file}"
+bashlog_error 'Request %s failed with status %s' "${request_id}" "${status}"
 ```
 
-Log through a canonical severity helper:
+Routine log records go to standard error.  Standard output remains available for
+application data, pipelines, and command substitution.
+
+By default, bashlog adapts presentation only to whether standard error is a
+terminal:
+
+```text
+stderr is a TTY      -> human rendering with severity styling
+stderr is not a TTY  -> deterministic logfmt without ANSI
+```
+
+So an interactive call may look like:
+
+```text
+info: Application started.
+```
+
+while the same call under redirected or captured stderr becomes:
+
+```text
+level=info msg="Application started."
+```
+
+No container, init system, service manager, CI platform, or logging backend is
+detected or guessed.
+
+## Redaction in One Minute
+
+Logging is a data-egress boundary.  bashlog does not guess which values are
+sensitive, create a default redaction policy, or automatically apply registered
+contexts.  Developers define the policy and explicitly invoke it.
+
+Register a fixed secret in a context:
 
 ```bash
-bashlog_info 'processed %s records' "${count}"
-bashlog_warning --tag cache 'cache miss for %s' "${key}"
+bashlog_redaction_add auth fixed \
+  "${token}" \
+  '[REDACTED TOKEN]'
 ```
 
-By default, the active threshold is `info`.  Records less severe than the
-threshold are suppressed.
-
-Configure the threshold explicitly:
+Then either let the logging call apply that context:
 
 ```bash
-bashlog_level_set debug
+bashlog_info --context auth \
+  'Request failed with token=%s' \
+  "${token}"
 ```
 
-Select output format explicitly when needed:
+or redact a value directly and handle the result yourself:
 
 ```bash
-bashlog_format_set human
-bashlog_format_set logfmt
-bashlog_format_set auto
+if clean="$(bashlog_redact auth "${message}")"; then
+  bashlog_info '%s' "${clean}"
+fi
 ```
 
-`auto` chooses human output when standard error is a TTY and deterministic logfmt
-otherwise.
+Both workflows are first-class public behavior.  A logging call without
+`--context` performs no logger-managed redaction.
 
-Protect explicitly selected values through a named redaction context:
+Use `--` when a format string could otherwise be mistaken for a bashlog option:
 
 ```bash
-bashlog_redaction_add api fixed "${API_TOKEN}" '[REDACTED]'
-bashlog_info --context api 'calling upstream with token=%s' "${API_TOKEN}"
+bashlog_info --context auth -- '-token=%s' "${token}"
 ```
 
-bashlog does not guess which values are sensitive.  Once a valid context is
-explicitly selected, however, redaction failure is fail-closed for that
-bashlog-controlled operation.
+## Design Boundaries
 
-## Project Scope
+bashlog makes deliberately narrow, testable promises.
 
-bashlog is intentionally a library rather than a command dispatcher, service,
-transport, log collector, storage layer, configuration framework, or secret
-manager.
+- **Sourcing is non-invasive.**  Loading bashlog does not install traps, change
+  caller shell options, define generic logging functions, emit output, access the
+  network, or take ownership of application control flow.
+- **Runtime operation is pure Bash.**  Logging, formatting, timestamps, redaction,
+  rendering, verification, and emission invoke no external commands.
+- **Standard error is the logging boundary.**  Transport, persistence,
+  aggregation, and forwarding belong to the caller's environment.
+- **Severity remains durable.**  Canonical severity names are present in both
+  human and logfmt output.
+- **Human styling is bounded.**  bashlog-owned color/intensity applies only to the
+  severity signifier and resets immediately afterward.
+- **Logfmt is ANSI-free.**  Machine-oriented output never receives bashlog-owned
+  terminal styling.
+- **Redaction is explicit.**  Registered contexts remain inert until the developer
+  invokes one.
+- **Selected redaction fails closed.**  Transformation and final verification
+  suppress a protected record rather than emit a candidate that still matches an
+  active rule.
+- **Replacement text is literal.**  Replacement values never become shell code,
+  ERE backreferences, glob syntax, or another secondary language.
+- **The security-critical path remains readable.**  bashlog rejects `eval`,
+  generated-code tricks, reversible obscurity, and fake encapsulation as security
+  controls.
 
-Sourcing bashlog does not intentionally:
+The project does **not** promise automatic secret discovery, secure memory or
+zeroization, protection from caller-side `set -x`, protection from hostile code
+already running in the same Bash interpreter, embedded-NUL support, Unicode
+normalization, direct syslog/journald/network/file delivery, or automatic
+host/container/service metadata.
 
-- change shell options;
-- install traps;
-- create generic aliases or convenience functions;
-- access the network;
-- mutate the filesystem;
-- execute external commands;
-- discover deployment infrastructure;
-- infer which values are sensitive; or
-- perform runtime plugin discovery.
+The complete normative contract is in
+[`doc/bashlog-spec.md`](doc/bashlog-spec.md).  The engineering posture behind the
+contract is summarized in
+[`doc/engineering-philosophy.md`](doc/engineering-philosophy.md), and the explicit
+security analysis is maintained in [`doc/threat-model.md`](doc/threat-model.md).
 
-The caller owns application policy, data acquisition, transport, persistence,
-retention, and downstream access control.
+## Runtime Requirements
+
+- Bash 4.3 or newer.
+- No external runtime commands required by bashlog itself.
+
+Development and release tooling may use external programs.  That tooling is
+outside the consumer runtime boundary.
 
 ## Public API
-
-The supported public functions are:
 
 ```text
 bashlog_level_get
 bashlog_level_set
+
 bashlog_format_get
 bashlog_format_set
 bashlog_timestamp_get
@@ -93,6 +146,7 @@ bashlog_color_set
 bashlog_level_style_get
 bashlog_level_style_set
 bashlog_level_style_reset
+
 bashlog_log
 bashlog_debug
 bashlog_info
@@ -102,63 +156,56 @@ bashlog_error
 bashlog_critical
 bashlog_alert
 bashlog_emergency
+
 bashlog_redaction_add
 bashlog_redaction_context_destroy
 bashlog_redact
 ```
 
-Names beginning `__bashlog_` are implementation details and are not public
-compatibility commitments.
+Functions named `__bashlog_*` are implementation details and are not part of the
+stable public API.
 
-The accepted normative behavior, including return statuses and exact output
-semantics, is defined in [`doc/bashlog-spec.md`](doc/bashlog-spec.md).
+## Log Levels
 
-## Severity Model
+bashlog uses the conventional eight syslog severity levels:
 
-bashlog uses the conventional eight-level syslog severity ordering:
+| Number | Name | Helper |
+| ---: | --- | --- |
+| 0 | `emergency` | `bashlog_emergency` |
+| 1 | `alert` | `bashlog_alert` |
+| 2 | `critical` | `bashlog_critical` |
+| 3 | `error` | `bashlog_error` |
+| 4 | `warning` | `bashlog_warning` |
+| 5 | `notice` | `bashlog_notice` |
+| 6 | `info` | `bashlog_info` |
+| 7 | `debug` | `bashlog_debug` |
 
-| Severity | Numeric value |
-| --- | ---: |
-| `emergency` | 0 |
-| `alert` | 1 |
-| `critical` | 2 |
-| `error` | 3 |
-| `warning` | 4 |
-| `notice` | 5 |
-| `info` | 6 |
-| `debug` | 7 |
-
-A message is emitted when its severity is at least as severe as the configured
-threshold.
-
-For example:
+The default threshold is `info`.  A message is eligible when its severity number
+is less than or equal to the active threshold.
 
 ```bash
 bashlog_level_set warning
 
-bashlog_info 'not emitted'
-bashlog_warning 'emitted'
+bashlog_info 'suppressed by threshold'
 bashlog_error 'emitted'
 ```
 
-## Generic Logging
-
-`bashlog_log` accepts a level followed by the same logging options and printf-style
-message interface used by the severity helpers:
-
-```bash
-bashlog_log notice 'starting %s' "${job_name}"
-bashlog_log 3 --tag database 'query failed: %s' "${reason}"
-```
-
-The canonical helper functions are thin public entry points into the same logging
-pipeline.
+Threshold suppression returns success and avoids unnecessary message construction
+and timestamp work.
 
 ## Presentation
 
-### Format
+The default presentation state is:
 
-The format mode is one of:
+```text
+format=auto
+timestamp=off
+color=auto
+```
+
+### Rendering
+
+`bashlog_format_set` accepts:
 
 ```text
 auto
@@ -166,52 +213,58 @@ human
 logfmt
 ```
 
-Configure it with:
-
-```bash
-bashlog_format_set auto
-```
-
-`human` is intended for direct terminal reading.  `logfmt` is deterministic,
-machine-oriented text.  `auto` selects between them according to whether standard
-error is attached to a TTY.
-
-Standard error is always the log sink.  Format selection changes representation,
-not transport.
-
-### Timestamps
-
-Timestamp mode is one of:
-
-```text
-off
-utc
-local
-```
-
-For example:
-
-```bash
-bashlog_timestamp_set utc
-```
-
-Timestamps are off by default.
+`auto` means exactly TTY-sensitive human/logfmt selection.  It does not mean
+general environment detection.
 
 ### Tags
 
-Tags are explicit per-call metadata:
+Logging calls accept repeatable tags:
 
 ```bash
-bashlog_info --tag worker --tag sync 'processed %s items' "${count}"
+bashlog_warning --tag api --tag retry 'request delayed'
 ```
 
-Tag values use the deliberately narrow grammar documented in the specification.
-Tags are not inferred from environment, process name, deployment platform, or
-other ambient context.
+Human rendering:
 
-### Color
+```text
+warning [api] [retry]: request delayed
+```
 
-Color policy is one of:
+Logfmt rendering:
+
+```text
+level=warning tag=api tag=retry msg="request delayed"
+```
+
+Tags use the explicitly ASCII grammar `[A-Za-z0-9_.:-]+` and preserve caller
+order.  There is no ambient global-tag configuration.
+
+### Timestamps
+
+Timestamping is disabled by default.  Enable Bash-native UTC or local timestamps:
+
+```bash
+bashlog_timestamp_set utc
+bashlog_timestamp_set local
+```
+
+UTC values have the form:
+
+```text
+2026-08-30T18:40:00Z
+```
+
+Local values include a numeric offset:
+
+```text
+2026-08-30T14:40:00-0400
+```
+
+bashlog does not invoke `date`.
+
+### Color and Severity Styles
+
+`bashlog_color_set` controls **whether** human severity styling is emitted:
 
 ```text
 never
@@ -219,16 +272,10 @@ auto
 always
 ```
 
-Configure it with:
+The default is `auto`.
 
-```bash
-bashlog_color_set auto
-```
-
-bashlog-owned ANSI styling is emitted only by the human renderer and only around
-the canonical severity token.  Logfmt never contains bashlog-owned ANSI styling.
-
-The default severity styles are:
+Per-level style controls **what** the severity signifier looks like when styling
+is enabled.  The default palette is:
 
 | Severity | Color | Intensity |
 | --- | --- | --- |
@@ -396,11 +443,7 @@ bashlog treats documentation as part of the architecture:
 - maintained Doxygen comments document implementation contracts beside source;
 - Bats tests provide executable evidence for observable guarantees.
 
-The ADR landing page at [`doc/adr/README.md`](doc/adr/README.md) is generated and
-committed so GitHub can present it directly when browsing the ADR directory.
-`make adr-index` regenerates it from the ADR corpus using the pinned adrctl
-documentation dependency plus maintained intro/outro fragments.  `make docs`
-regenerates the ADR index and also produces Doxygen reference output.
+The complete ADR index is in [`doc/adr/README.md`](doc/adr/README.md).
 
 Generated Doxygen reference output lives under `doc/reference/` and is not
 committed.
