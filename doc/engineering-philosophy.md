@@ -76,6 +76,36 @@ is more useful than maximal minimalism.  The relevant question is whether a
 mechanism solves a real logging problem without unnecessarily capturing policy or
 infrastructure that can remain outside bashlog.
 
+## Treat Every Dependency as New Attack Surface
+
+bashlog is itself a dependency for its consumers, which makes dependency trust a
+particularly relevant part of its engineering posture.
+
+A logging dependency can observe data that callers may consider routine until a
+credential, token, identifier, private value, or attacker-controlled string passes
+through it.  The historical Log4Shell vulnerability in Log4j is a memorable
+example of the broader lesson: infrastructure labeled "logging" can still become
+a critical attack surface.
+
+The project therefore evaluates dependencies according to authority and data
+exposure rather than category names.  For each dependency, ask what code executes,
+what data it can see, what ambient privileges or shell state it inherits, what
+network/filesystem behavior it can trigger, what transitive code becomes trusted,
+and what happens if the dependency is compromised or unavailable.
+
+Pinning and checksums prove that acquired bytes match the reviewed expectation;
+they do not prove those bytes are free of vulnerabilities or architecturally
+appropriate.
+
+This principle informs bashlog's pure-Bash runtime and deliberately small runtime
+surface.  It does not imply that custom code is automatically safer than a
+well-reviewed dependency.  It means the comparison should be explicit, with the
+trusted computing base treated as a design choice rather than an incidental side
+effect of implementation convenience.
+
+Build, test, documentation, and release dependencies remain part of the supply
+chain even though they are not present in the consumer runtime artifact.
+
 ## Define Contracts Before Mechanisms
 
 Public behavior is a compatibility commitment.  The project therefore prefers to
