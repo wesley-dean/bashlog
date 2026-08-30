@@ -140,6 +140,7 @@ BASH
       bashlog_format_get bashlog_format_set \
       bashlog_timestamp_get bashlog_timestamp_set \
       bashlog_color_get bashlog_color_set \
+      bashlog_level_style_get bashlog_level_style_set bashlog_level_style_reset \
       bashlog_log bashlog_debug bashlog_info bashlog_notice \
       bashlog_warning bashlog_error bashlog_critical bashlog_alert \
       bashlog_emergency bashlog_redaction_add \
@@ -158,6 +159,7 @@ BASH
     PATH=/definitely/not/a/real/path
     source "$1"
     bashlog_level_set debug || exit
+    bashlog_level_style_set critical red bold || exit
     bashlog_redaction_add auth fixed secret "[REDACTED]" || exit
     bashlog_info --context auth "value=%s" secret
 BASH
