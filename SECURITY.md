@@ -8,8 +8,10 @@ security-boundary failures seriously, particularly because redaction is part of
 bashlog's documented behavior.
 
 The project's security claims are intentionally bounded.  `README.md`,
-`doc/bashlog-spec.md`, and the governing ADRs describe what bashlog promises and
-what remains outside its protection boundary.
+`doc/bashlog-spec.md`, the governing ADRs, and `doc/threat-model.md` describe what
+bashlog protects, what it trusts, where data crosses boundaries, what evidence
+supports the documented mitigations, and what remains outside its protection
+boundary.
 
 ## Reporting a Vulnerability
 
@@ -38,6 +40,9 @@ public record may be created as part of the coordinated resolution.
 
 Security-sensitive changes should preserve the project's documented fail-closed
 boundaries, negative disclosure tests, pure-Bash runtime constraints, and explicit
-limitations.  A proposed fix that broadens a security claim should update the
-relevant ADR and normative specification rather than relying on implementation
-behavior alone.
+limitations.  Changes that add dependencies, alter data-egress behavior, change
+trust boundaries, or broaden security claims should also revisit
+`doc/threat-model.md`.
+
+A proposed fix that broadens a security claim should update the relevant ADR and
+normative specification rather than relying on implementation behavior alone.
