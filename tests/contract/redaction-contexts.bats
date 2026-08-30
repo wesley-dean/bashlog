@@ -109,7 +109,7 @@ BASH
 @test "invalid context identifier grammar is rejected" {
   run_bashlog_script <<'BASH'
     source "$1"
-    for context in '' '9starts-with-digit' 'has space' 'has/slash' '$bad' 'semi;colon'; do
+    for context in '' '9starts-with-digit' 'has space' 'has/slash' '$bad' 'semi;colon' 'café' 'über'; do
       bashlog_redaction_add "${context}" fixed secret '[R]'
       [[ $? -eq 64 ]] || exit 1
     done
@@ -118,6 +118,23 @@ BASH
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
   [[ "${stderr}" != *'secret'* ]]
+}
+
+@test "ASCII context validation does not change caller locale state" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    before_lc_all=${LC_ALL-}
+    before_lc_collate=${LC_COLLATE-}
+    bashlog_redaction_add 'café' fixed secret '[R]'
+    rc=$?
+    [[ ${rc} -eq 64 ]] || exit 1
+    [[ ${LC_ALL-} == "${before_lc_all}" ]] || exit 1
+    [[ ${LC_COLLATE-} == "${before_lc_collate}" ]] || exit 1
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ -z "${output}" ]
+  [ -z "${stderr}" ]
 }
 
 @test "successful context destruction makes context unavailable" {
