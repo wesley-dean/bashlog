@@ -14,7 +14,7 @@ The repository uses a layered documentation model:
   to the governing ADR.
 - `AGENTS.md` is a concise operational map that points back to governing
   documentation rather than repeating its reasoning.
-- A project specification, once created, describes current observable public
+- `doc/bashlog-spec.md` defines the accepted normative observable public
   behavior.
 - Doxygen comments preserve local implementation contracts and reasoning near
   the code that depends upon them.
@@ -45,9 +45,6 @@ See [`doc/decisions.md`](../decisions.md) for the concise current decision map.
 - ADR-010: Generated Reference Documentation Is Ephemeral
 - ADR-011: Conventional-Commit Semantic Releases and Late Tagging
 - ADR-012: Standardize SHA-256 Checksum Companion Filenames
-
-### Proposed
-
 - ADR-013: Sourceable Library Scope and Responsibility Boundary
 - ADR-014: Pure Bash Runtime and External Command Boundary
 - ADR-015: Namespaced Public API and Caller-Owned Convenience Wrappers

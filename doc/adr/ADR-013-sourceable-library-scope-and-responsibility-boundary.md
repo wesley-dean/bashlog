@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed
+Accepted
 
 ## Intent and Documentation Posture
 
@@ -350,8 +350,8 @@ This decision draws from several established project patterns:
   public feature, remains to be specified.
 - The public behavior of `bashlog_die` or equivalent terminating helpers remains
   to be defined in the logging API ADR and specification.
-- A future normative `doc/bashlog-spec.md` should translate accepted ADRs into
-  precise current behavior after the public API stabilizes.
+- The normative `doc/bashlog-spec.md` translates accepted ADRs into precise
+  observable public behavior for implementation and testing.
 
 ## Related Decisions
 
