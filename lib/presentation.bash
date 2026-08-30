@@ -2,9 +2,10 @@
 ## @file lib/presentation.bash
 ## @brief Implements bashlog presentation configuration and text renderers.
 ## @details
-## This module owns the presentation state introduced by ADR-025 and ADR-026:
-## renderer selection, optional Bash-native timestamps, severity-aware human
-## color, tag validation, human rendering, and the constrained logfmt renderer.
+## This module owns the presentation state introduced by ADR-025, ADR-026, and
+## ADR-027: renderer selection, optional Bash-native timestamps, severity-aware
+## human color, per-level severity-token style configuration, tag validation,
+## human rendering, and the constrained logfmt renderer.
 ##
 ## Presentation is deliberately downstream of logging policy and redaction.  The
 ## logging module supplies semantic fields that are already protected when an
@@ -19,6 +20,7 @@
 ## @see doc/bashlog-spec.md
 ## @see doc/adr/ADR-025-optional-presentation-metadata-tags-and-color.md
 ## @see doc/adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md
+## @see doc/adr/ADR-027-configurable-severity-token-styles.md
 
 ## @var __bashlog_format_mode
 ## @brief Active renderer mode: auto, human, or logfmt.
@@ -31,6 +33,14 @@ declare -g __bashlog_timestamp_mode=off
 ## @var __bashlog_color_mode
 ## @brief Active human-color mode: never, auto, or always.
 declare -g __bashlog_color_mode=auto
+
+## @var __bashlog_level_style_colors
+## @brief Per-severity symbolic foreground colors indexed by normalized level.
+declare -ga __bashlog_level_style_colors=(red red red red yellow cyan green default)
+
+## @var __bashlog_level_style_intensities
+## @brief Per-severity symbolic intensities indexed by normalized level.
+declare -ga __bashlog_level_style_intensities=(bold bold bold normal normal normal normal dim)
 
 ## @var __bashlog_resolved_format
 ## @brief Internal output slot containing the renderer selected for one call.
@@ -146,6 +156,8 @@ bashlog_color_get() {
 ## `never` disables bashlog-owned ANSI, `auto` enables it only when fd 2 is a
 ## terminal, and `always` enables it whenever the human renderer is selected.
 ## Logfmt output never receives bashlog-owned ANSI regardless of this setting.
+## Per-level appearance is configured independently with
+## `bashlog_level_style_set`.
 ## @param mode Color mode: never, auto, or always.
 ## @retval 0 The mode changed successfully.
 ## @retval 64 The argument count or mode is invalid.
@@ -156,6 +168,146 @@ bashlog_color_set() {
 
   case $1 in
     never | auto | always) __bashlog_color_mode=$1 ;;
+    *) return 64 ;;
+  esac
+
+  return 0
+}
+
+## @fn bashlog_level_style_get()
+## @brief Writes the configured color and intensity for one severity token.
+## @details
+## LEVEL accepts the same canonical name or integer from 0 through 7 accepted by
+## `bashlog_level_set`.  Numeric and named forms address the same stored style.
+## @param level Canonical severity name or numeric severity from 0 through 7.
+## @par Standard Output
+## `COLOR INTENSITY` followed by exactly one newline on success.
+## @par Standard Error
+## No routine output.
+## @retval 0 The style was written successfully.
+## @retval 64 The argument count or level is invalid.
+## @par Examples
+## @code
+## bashlog_level_style_get critical
+## # red bold
+## @endcode
+bashlog_level_style_get() {
+  local level_number
+
+  if (( $# != 1 )); then
+    return 64
+  fi
+
+  __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
+  level_number=${__bashlog_level_number}
+  printf '%s %s\n' \
+    "${__bashlog_level_style_colors[level_number]}" \
+    "${__bashlog_level_style_intensities[level_number]}"
+}
+
+## @fn bashlog_level_style_set()
+## @brief Overrides the symbolic color and intensity for one severity token.
+## @details
+## COLOR is one of `default`, `black`, `red`, `green`, `yellow`, `blue`,
+## `magenta`, `cyan`, or `white`.  INTENSITY is one of `normal`, `bold`, or
+## `dim`.  Validation is atomic: invalid input leaves the prior style unchanged.
+## Raw ANSI and numeric SGR fragments are not accepted by this API.
+## @param level Canonical severity name or numeric severity from 0 through 7.
+## @param color Symbolic foreground color.
+## @param intensity Symbolic intensity: normal, bold, or dim.
+## @retval 0 The style was changed successfully.
+## @retval 64 The argument count, level, color, or intensity is invalid.
+## @par Examples
+## @code
+## bashlog_level_style_set error magenta bold
+## bashlog_level_style_set debug default normal
+## @endcode
+bashlog_level_style_set() {
+  local level_number
+  local color
+  local intensity
+
+  if (( $# != 3 )); then
+    return 64
+  fi
+
+  __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
+  level_number=${__bashlog_level_number}
+  color=$2
+  intensity=$3
+
+  case ${color} in
+    default | black | red | green | yellow | blue | magenta | cyan | white) ;;
+    *) return 64 ;;
+  esac
+
+  case ${intensity} in
+    normal | bold | dim) ;;
+    *) return 64 ;;
+  esac
+
+  __bashlog_level_style_colors[level_number]=${color}
+  __bashlog_level_style_intensities[level_number]=${intensity}
+  return 0
+}
+
+## @fn bashlog_level_style_reset()
+## @brief Restores one severity style or the complete palette to library defaults.
+## @details
+## With no arguments, restore all eight default styles.  With one LEVEL argument,
+## restore only that severity.  Invalid input leaves all styles unchanged.
+## @param level Optional canonical severity name or numeric severity from 0 through 7.
+## @retval 0 The requested default style state was restored.
+## @retval 64 More than one argument was supplied or LEVEL is invalid.
+## @par Examples
+## @code
+## bashlog_level_style_reset error
+## bashlog_level_style_reset
+## @endcode
+bashlog_level_style_reset() {
+  local level_number
+
+  if (( $# > 1 )); then
+    return 64
+  fi
+
+  if (( $# == 0 )); then
+    __bashlog_level_style_colors=(red red red red yellow cyan green default)
+    __bashlog_level_style_intensities=(bold bold bold normal normal normal normal dim)
+    return 0
+  fi
+
+  __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
+  level_number=${__bashlog_level_number}
+
+  case ${level_number} in
+    0 | 1 | 2)
+      __bashlog_level_style_colors[level_number]=red
+      __bashlog_level_style_intensities[level_number]=bold
+      ;;
+    3)
+      __bashlog_level_style_colors[level_number]=red
+      __bashlog_level_style_intensities[level_number]=normal
+      ;;
+    4)
+      __bashlog_level_style_colors[level_number]=yellow
+      __bashlog_level_style_intensities[level_number]=normal
+      ;;
+    5)
+      __bashlog_level_style_colors[level_number]=cyan
+      __bashlog_level_style_intensities[level_number]=normal
+      ;;
+    6)
+      __bashlog_level_style_colors[level_number]=green
+      __bashlog_level_style_intensities[level_number]=normal
+      ;;
+    7)
+      __bashlog_level_style_colors[level_number]=default
+      __bashlog_level_style_intensities[level_number]=dim
+      ;;
     *) return 64 ;;
   esac
 
@@ -263,36 +415,72 @@ __bashlog_timestamp_acquire() {
 }
 
 ## @fn __bashlog_human_color_code()
-## @brief Selects the ANSI SGR code for one canonical severity.
+## @brief Encodes the configured symbolic style for one canonical severity.
 ## @details
-## The initial palette colors only the severity token: emergency/alert use bold
-## red, critical/error red, warning yellow, notice cyan, info green, and debug dim.
+## The style arrays contain symbolic foreground color plus symbolic intensity.
+## This helper maps only those bounded values to ANSI SGR codes.  A configured
+## `default normal` style intentionally produces an empty code, causing the human
+## renderer to emit no bashlog-owned SGR bytes for that severity.
 ## @param level Canonical severity name.
 ## @par Standard Output
 ## No output; the code is written to `__bashlog_human_color_code_value`.
-## @retval 0 A code was selected.
-## @retval 70 The severity is invalid.
+## @retval 0 A valid style was encoded, including a deliberately empty code.
+## @retval 70 The severity or internal symbolic style state is invalid.
 __bashlog_human_color_code() {
-  case $1 in
-    emergency | alert) __bashlog_human_color_code_value='1;31' ;;
-    critical | error) __bashlog_human_color_code_value='31' ;;
-    warning) __bashlog_human_color_code_value='33' ;;
-    notice) __bashlog_human_color_code_value='36' ;;
-    info) __bashlog_human_color_code_value='32' ;;
-    debug) __bashlog_human_color_code_value='2' ;;
+  local level_number
+  local color
+  local intensity
+  local color_code=
+  local intensity_code=
+
+  if ! __bashlog_level_to_number "$1"; then
+    __bashlog_human_color_code_value=
+    return 70
+  fi
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
+  level_number=${__bashlog_level_number}
+  color=${__bashlog_level_style_colors[level_number]}
+  intensity=${__bashlog_level_style_intensities[level_number]}
+
+  case ${color} in
+    default) color_code= ;;
+    black) color_code=30 ;;
+    red) color_code=31 ;;
+    green) color_code=32 ;;
+    yellow) color_code=33 ;;
+    blue) color_code=34 ;;
+    magenta) color_code=35 ;;
+    cyan) color_code=36 ;;
+    white) color_code=37 ;;
     *)
       __bashlog_human_color_code_value=
       return 70
       ;;
   esac
 
+  case ${intensity} in
+    normal) intensity_code= ;;
+    bold) intensity_code=1 ;;
+    dim) intensity_code=2 ;;
+    *)
+      __bashlog_human_color_code_value=
+      return 70
+      ;;
+  esac
+
+  if [[ -n ${intensity_code} && -n ${color_code} ]]; then
+    __bashlog_human_color_code_value="${intensity_code};${color_code}"
+  else
+    __bashlog_human_color_code_value="${intensity_code}${color_code}"
+  fi
+
   return 0
 }
 
 ## @fn __bashlog_human_color_enabled()
-## @brief Determines whether the current human record should color its severity token.
-## @retval 0 Color should be emitted.
-## @retval 1 Color should not be emitted.
+## @brief Determines whether the current human record should style its severity token.
+## @retval 0 Styling may be emitted.
+## @retval 1 Styling must not be emitted.
 ## @retval 70 Internal color state is invalid.
 __bashlog_human_color_enabled() {
   case ${__bashlog_color_mode} in
@@ -371,9 +559,10 @@ __bashlog_logfmt_quote() {
 ## @fn __bashlog_render_human()
 ## @brief Renders semantic fields into the compact human representation.
 ## @details
-## Arguments are LEVEL, TIMESTAMP, MESSAGE, then zero or more TAG values.  Color,
+## Arguments are LEVEL, TIMESTAMP, MESSAGE, then zero or more TAG values.  Style,
 ## when enabled, decorates only the severity token and is reset before tag/message
-## text is appended.
+## text is appended.  A configured `default normal` style emits no bashlog-owned
+## SGR bytes even when global color mode permits styling.
 ## @param level Canonical severity.
 ## @param timestamp Generated timestamp or empty string.
 ## @param message Formatted caller message, already redacted when requested.
@@ -399,7 +588,9 @@ __bashlog_render_human() {
     if ! __bashlog_human_color_code "${level}"; then
       return 70
     fi
-    level_text=$'\033['"${__bashlog_human_color_code_value}"$'m'"${level}"$'\033[0m'
+    if [[ -n ${__bashlog_human_color_code_value} ]]; then
+      level_text=$'\033['"${__bashlog_human_color_code_value}"$'m'"${level}"$'\033[0m'
+    fi
   fi
 
   if [[ -n ${timestamp} ]]; then
@@ -423,12 +614,14 @@ __bashlog_render_human() {
 ## order is deterministic: optional `ts`, required `level`, repeated `tag`, and
 ## required `msg`.  Message values are always quoted.  Tags remain unquoted while
 ## they still satisfy the public ASCII tag grammar after optional redaction;
-## otherwise they are quoted with the same encoder used for messages.
+## otherwise they are quoted with the same encoder used for messages.  Per-level
+## severity styles never affect this renderer.
 ## @param level Canonical severity.
 ## @param timestamp Generated timestamp or empty string.
 ## @param message Formatted caller message, already redacted when requested.
 ## @param tags Zero or more caller tags, already redacted when requested.
 ## @retval 0 The rendered record was written to `__bashlog_render_result`.
+## @retval 70 Presentation state is invalid.
 __bashlog_render_logfmt() {
   local level=$1
   local timestamp=$2

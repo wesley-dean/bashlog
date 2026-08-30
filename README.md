@@ -25,6 +25,9 @@ bashlog makes deliberately narrow, testable promises.
   systemd, Docker, Podman, containers, CI, or another logging infrastructure.
 - **Severity remains durable.**  The canonical level is present in human and
   logfmt output even though threshold filtering is independent of rendering.
+- **Human styling is bounded.**  bashlog-owned color and intensity apply only to
+  the canonical severity signifier, reset immediately afterward, and never enter
+  logfmt output.
 - **Redaction is explicit.**  bashlog does not guess what is sensitive, create a
   default context, or apply registered contexts automatically.  Developers create
   rules and decide when to invoke them.
@@ -77,6 +80,9 @@ bashlog does **not** promise:
   functionality;
 - safety of arbitrary downstream transformations after `bashlog_redact` returns
   a verified value;
+- identical visual presentation of color, bold, or dim across terminals and
+  themes;
+- arbitrary ANSI, background-color, 256-color, or RGB style configuration;
 - direct syslog, journald, network, or file delivery;
 - automatic discovery of systemd, Docker, Podman, logging drivers, or other
   deployment infrastructure.
@@ -109,6 +115,9 @@ bashlog_timestamp_get
 bashlog_timestamp_set
 bashlog_color_get
 bashlog_color_set
+bashlog_level_style_get
+bashlog_level_style_set
+bashlog_level_style_reset
 
 bashlog_log
 bashlog_debug
@@ -125,9 +134,9 @@ bashlog_redaction_context_destroy
 bashlog_redact
 ```
 
-The normative details, including argument grammar, presentation modes, exact
-logfmt escaping, return statuses, threshold behavior, matcher semantics, streams,
-and failure handling, are in
+The normative details, including argument grammar, presentation modes, severity
+style configuration, exact logfmt escaping, return statuses, threshold behavior,
+matcher semantics, streams, and failure handling, are in
 [`doc/bashlog-spec.md`](doc/bashlog-spec.md).
 
 Functions named `__bashlog_*` are implementation details.  Their names are
@@ -283,7 +292,7 @@ state when it returns.
 
 Timestamp acquisition occurs only for messages that survive threshold policy.
 
-## Color
+## Color and Severity Styles
 
 Color modes are:
 
@@ -295,15 +304,74 @@ always
 
 The default is `auto`.
 
-Color belongs only to the human renderer.  `auto` colors the canonical severity
-when stderr is a terminal.  `always` forces color whenever human rendering is
-selected.  `never` disables bashlog-owned ANSI sequences.
+`bashlog_color_set` controls **whether** bashlog-owned styling is allowed:
+
+- `never` disables it;
+- `auto` enables it for human rendering only when stderr is a TTY;
+- `always` enables it whenever human rendering is selected.
 
 The logfmt renderer never emits bashlog-owned ANSI, even when color is configured
 as `always`.
 
-The initial palette is severity-aware: emergency/alert are bold red,
-critical/error red, warning yellow, notice cyan, info green, and debug dim.
+When styling is enabled, only the canonical severity signifier is styled.  The
+ANSI reset immediately follows the severity token; timestamps, tags, punctuation,
+message text, and the final newline remain outside the bashlog-owned style span.
+
+The default palette is:
+
+| Severity | Color | Intensity |
+| --- | --- | --- |
+| `emergency` | red | bold |
+| `alert` | red | bold |
+| `critical` | red | bold |
+| `error` | red | normal |
+| `warning` | yellow | normal |
+| `notice` | cyan | normal |
+| `info` | green | normal |
+| `debug` | terminal default | dim |
+
+`bashlog_level_style_set` controls **what** one severity signifier looks like when
+styling is enabled:
+
+```bash
+bashlog_level_style_set error magenta bold
+bashlog_level_style_set warning blue normal
+bashlog_level_style_set debug default normal
+```
+
+Supported colors are:
+
+```text
+default black red green yellow blue magenta cyan white
+```
+
+Supported intensities are:
+
+```text
+normal bold dim
+```
+
+The API accepts symbolic values rather than raw ANSI/SGR strings.  A style of
+`default normal` emits no bashlog-owned styling for that severity.
+
+Inspect a level's current style with:
+
+```bash
+bashlog_level_style_get critical
+```
+
+which prints:
+
+```text
+red bold
+```
+
+Restore one level or the entire palette with:
+
+```bash
+bashlog_level_style_reset error
+bashlog_level_style_reset
+```
 
 ## Log Levels
 
@@ -679,17 +747,18 @@ The behavior/security suite is under `tests/contract/`.
 - `dist/bashlog.min.bash`.
 
 The suite covers source-time behavior, severity/threshold semantics, adaptive
-human/logfmt presentation, tags, timestamp and color configuration, exact logfmt
-escaping, both explicit redaction workflows, context lifecycle, fixed/glob/ERE
-semantics, multibyte exact matching, ambient shell-state isolation, fail-closed
-rule interactions, safe diagnostics, unavailable contexts, and the
-no-external-runtime-command boundary.
+human/logfmt presentation, tags, timestamp and color configuration, configurable
+severity-token styles, exact logfmt escaping, both explicit redaction workflows,
+context lifecycle, fixed/glob/ERE semantics, multibyte exact matching, ambient
+shell-state isolation, fail-closed rule interactions, safe diagnostics,
+unavailable contexts, and the no-external-runtime-command boundary.
 
 Security tests assert absence as well as presence.  A replacement marker appearing
 is not sufficient evidence if the protected original leaked elsewhere.
 
 CI additionally runs a representative compatibility contract against all three
-artifacts under Bash 4.3.
+artifacts under Bash 4.3, including representative severity style configuration
+and rendering.
 
 ## Documentation Model
 
@@ -722,9 +791,10 @@ concise decision map is in [`doc/decisions.md`](doc/decisions.md).
 
 ADR-013 through ADR-024 establish the accepted sourceable-library, runtime-purity,
 namespaced-API, logging, redaction, matcher, auditability, and fail-closed
-foundations.  ADR-025 and ADR-026 define the presentation and adaptive-rendering
-tranche: timestamps, tags, color, human/logfmt output, stderr environment
-composition, and semantic-redaction-before-rendering ordering.
+foundations.  ADR-025 and ADR-026 define timestamps, tags, adaptive human/logfmt
+rendering, stderr environment composition, and semantic-redaction-before-rendering
+ordering.  ADR-027 defines the severity-signifier-only styling boundary and the
+symbolic per-level override API.
 
 Architectural conflicts should be resolved explicitly rather than allowing
 implementation convenience to silently redefine the contract.

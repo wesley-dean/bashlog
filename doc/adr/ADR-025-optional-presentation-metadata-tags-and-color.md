@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed
+Accepted
 
 ## Intent and Documentation Posture
 
@@ -33,7 +33,7 @@ level: message
 ```
 
 That made the initial logging and redaction pipeline small enough to define and
-prove precisely.  With that core now implemented, several useful presentation
+prove precisely.  With that core implemented, several useful presentation
 features can be added without changing bashlog's narrow purpose.
 
 The features have different security and compatibility implications.
@@ -219,9 +219,8 @@ bashlog SHALL NOT invoke `tput`, `tty`, `test`, or another external command to
 determine whether color should be used.
 
 Color SHALL be severity-aware and implemented with library-owned ANSI SGR
-constants.  The exact initial palette belongs in `doc/bashlog-spec.md` when these
-proposed decisions are ratified so tests can treat it as observable public
-behavior.
+constants.  The exact default palette and supported overrides are defined by the
+normative specification and ADR-027.
 
 Color is presentation decoration rather than message semantics.  ANSI bytes SHALL
 be introduced only after caller-supplied message and tag fields have completed
@@ -235,7 +234,7 @@ complete.
 
 ### Default Presentation Combination
 
-Together with ADR-026, the intended default configuration is:
+Together with ADR-026, the default configuration is:
 
 ```text
 format=auto
@@ -250,7 +249,8 @@ interactive terminal:
 warning [database]: connection delayed
 ```
 
-with severity-aware color applied to the documented human portion, while:
+with severity-aware color applied to the documented human severity signifier,
+while:
 
 ```text
 non-terminal stderr:
@@ -458,16 +458,16 @@ requirements justify them.
 
 ## Consequences
 
-The presentation model becomes richer while remaining narrow.  Interactive human
+The presentation model is richer while remaining narrow.  Interactive human
 output gains useful color by default.  Non-terminal output receives no
 bashlog-owned ANSI because ADR-026 selects logfmt there under the default format
 mode.
 
-Implementation will need explicit presentation state, additional option parsing,
+Implementation includes explicit presentation state, additional option parsing,
 Bash-native timestamp generation, tag validation, primary field redaction, and
 renderer-aware color application.
 
-Tests must cover timestamps, tags containing protected values, color in
+Tests cover timestamps, tags containing protected values, color in
 `never`/`auto`/`always` modes, terminal and redirected human output, logfmt's
 unconditional no-color guarantee, invalid configuration, preservation of caller
 state, and final verification of completed records.
@@ -481,14 +481,12 @@ ADR-024's fail-closed final output boundary.
 
 ADR-026 extends this presentation model by defining environment-agnostic standard-
 error transport, adaptive human/logfmt renderer selection, and the semantic-
-redaction-before-presentation ordering.
+redaction-before-presentation ordering.  ADR-027 further defines configurable
+severity-token styling while preserving this ADR's enablement and renderer
+boundaries.
 
 ## Open Questions and Follow-Ups
 
-- The exact ANSI SGR palette should be fixed in the normative specification when
-  this ADR is accepted.
-- Implementation should verify Bash 4.3 builtin timestamp formatting and
-  function-local timezone handling in the compatibility environment.
 - A future need for persistent/global component tags should be demonstrated
   before another mutable configuration layer is added.
 - Structured fields beyond timestamp, level, tag, and message remain outside this
@@ -505,3 +503,4 @@ redaction-before-presentation ordering.
 - ADR-019: Readability, Auditability, and Rejection of Obscurity
 - ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 - ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr Transport
+- ADR-027: Configurable Severity Token Styles

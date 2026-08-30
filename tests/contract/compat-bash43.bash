@@ -15,6 +15,13 @@ source "${BASHLOG_ARTIFACT}"
 [[ $(bashlog_format_get) == auto ]] || fail 'default format'
 [[ $(bashlog_timestamp_get) == off ]] || fail 'default timestamp'
 [[ $(bashlog_color_get) == auto ]] || fail 'default color'
+[[ $(bashlog_level_style_get critical) == 'red bold' ]] || fail 'default critical style'
+[[ $(bashlog_level_style_get 3) == 'red normal' ]] || fail 'numeric error style lookup'
+
+bashlog_level_style_set error magenta bold || fail 'set error style'
+[[ $(bashlog_level_style_get error) == 'magenta bold' ]] || fail 'read error style override'
+bashlog_level_style_reset error || fail 'reset error style'
+[[ $(bashlog_level_style_get error) == 'red normal' ]] || fail 'read reset error style'
 
 bashlog_level_set debug || fail 'set debug threshold'
 bashlog_format_set human || fail 'set human format'
@@ -27,6 +34,15 @@ trap 'rm -f "${stdout_file}" "${stderr_file}"' EXIT
 bashlog_info 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stderr_file}" || fail 'human info call'
 [[ ! -s ${stdout_file} ]] || fail 'human info stdout'
 [[ $(<"${stderr_file}") == 'info: compatibility=bash43' ]] || fail 'human info rendering'
+
+bashlog_color_set always || fail 'set color always'
+bashlog_critical 'critical-style' >"${stdout_file}" 2>"${stderr_file}" || fail 'critical style call'
+[[ $(<"${stderr_file}") == $'\033[1;31mcritical\033[0m: critical-style' ]] || fail 'critical style rendering'
+bashlog_level_style_set critical default normal || fail 'set plain critical style'
+bashlog_critical 'plain-critical' >"${stdout_file}" 2>"${stderr_file}" || fail 'plain critical call'
+[[ $(<"${stderr_file}") == 'critical: plain-critical' ]] || fail 'plain critical rendering'
+bashlog_level_style_reset critical || fail 'reset critical style'
+bashlog_color_set never || fail 'restore color never'
 
 bashlog_format_set logfmt || fail 'set logfmt format'
 bashlog_info --tag compat 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stderr_file}" || fail 'logfmt info call'

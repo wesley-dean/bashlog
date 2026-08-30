@@ -175,22 +175,21 @@ See [ADR-016](adr/ADR-016-modular-source-assembly-for-a-sourceable-library.md).
 
 ### ADR-017: Logging Pipeline, Levels, Formatting, and Emission
 
-All bashlog-provided logging helpers converge through a common pipeline in which
-supported message formatting and sink-bound metadata are complete before the
-final redaction boundary and emission.  Severity, verbosity, rendering, or
-convenience helpers may not create alternate unredacted sink paths.
+All bashlog-provided logging helpers converge through a common pipeline.  ADR-026
+supersedes the original complete-render-before-redaction ordering: logger-managed
+redaction now protects caller semantic fields before rendering, while the final
+sink-bound verification remains immediately before emission.
 
-See [ADR-017](adr/ADR-017-logging-pipeline-levels-formatting-and-emission.md).
+See [ADR-017](adr/ADR-017-logging-pipeline-levels-formatting-and-emission.md) and
+[ADR-026](adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md).
 
 ### ADR-018: Redaction as an Opt-In Security Boundary
 
 Redaction is explicit defense in depth: bashlog does not guess which values are
-sensitive, but once a rule is accepted, honoring it becomes a security obligation
-for bashlog-controlled sinks.  Redaction failure suppresses the original message,
-replacement text is always literal, registered secret values are not intentionally
-exposed through public retrieval, persistence, environment export, diagnostics,
-or external helper programs, and the project makes no secure-memory or hostile-
-same-process-code claim.
+sensitive, but once a rule is accepted and its context is explicitly invoked,
+honoring it becomes a security obligation for that bashlog operation.  Redaction
+failure suppresses the protected record, replacement text is always literal, and
+the project makes no secure-memory or hostile-same-process-code claim.
 
 See [ADR-018](adr/ADR-018-redaction-as-an-opt-in-security-boundary.md).
 
@@ -246,34 +245,41 @@ See [ADR-023](adr/ADR-023-glob-and-ere-redaction-semantics.md).
 
 ### ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 
-After one registration-ordered transformation pass, the complete rendered
-candidate is rechecked against every active fixed, glob, and ERE rule immediately
-before emission.  Any remaining match or matcher-evaluation error suppresses the
-candidate; bashlog does not repeatedly rewrite until a fixed point, and even
-failure diagnostics use a bounded path that prefers silence when they cannot be
-verified safely.
+After each semantic field's ordered transformation and verification, a logging
+call that selected a context finally rechecks the complete rendered candidate
+against that same context before emission.  Any remaining match or matcher error
+suppresses the candidate; bashlog does not repeatedly rewrite until a fixed point,
+and safe diagnostics remain bounded and fail closed.
 
-See [ADR-024](adr/ADR-024-final-redaction-verification-and-fail-closed-output.md).
-
-## Proposed Decisions
+See [ADR-024](adr/ADR-024-final-redaction-verification-and-fail-closed-output.md)
+and [ADR-026](adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md).
 
 ### ADR-025: Optional Presentation Metadata, Tags, and Color
 
-bashlog would add Bash-native optional timestamps, repeatable per-call tags, and
-severity-aware color for the human renderer.  Timestamping remains off by
+bashlog provides Bash-native optional timestamps, repeatable per-call tags, and
+severity-aware styling for the human renderer.  Timestamping remains off by
 default, tags remain explicit, and color defaults to `auto`; logfmt output never
-contains bashlog-owned ANSI color.
+contains bashlog-owned ANSI styling.
 
 See [ADR-025](adr/ADR-025-optional-presentation-metadata-tags-and-color.md).
 
 ### ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr Transport
 
-Standard error remains the universal sink, while `format=auto` would select human
+Standard error remains the universal sink, while `format=auto` selects human
 output when fd 2 is a TTY and deterministic logfmt when it is not.  Redaction
 remains explicit and developer-owned: callers create/populate the applicable
 context, then either invoke `bashlog_redact` directly or pass `--context CONTEXT`
-to a logging call, with `--` terminating logging options when needed; bashlog does
-not infer sensitivity, synthesize a default policy, apply ambient contexts, or
-detect deployment infrastructure.
+to a logging call; primary logger-managed redaction occurs before renderer
+serialization, and bashlog does not infer deployment infrastructure.
 
 See [ADR-026](adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md).
+
+### ADR-027: Configurable Severity Token Styles
+
+Global `never|auto|always` color policy determines whether human severity styling
+may be emitted, while per-level symbolic style determines the canonical severity
+token's foreground color and `normal|bold|dim` intensity.  Styling is limited to
+the severity signifier, resets immediately after it, is independently resettable,
+accepts no raw ANSI/SGR input, and never affects logfmt output.
+
+See [ADR-027](adr/ADR-027-configurable-severity-token-styles.md).

@@ -37,8 +37,11 @@ silently choosing whichever artifact is easiest to change.
   transformation, final verification, and safe diagnostic handling.
 - `lib/redaction.bash`: public redaction registration, context destruction, and
   transform-only redaction API.
-- `lib/logging.bash`: generic logger, canonical severity helpers, rendering, and
-  standard-error emission.
+- `lib/presentation.bash`: renderer selection, Bash-native timestamps, tag
+  validation, logfmt encoding, global color policy, per-severity token styles,
+  and human/logfmt rendering.
+- `lib/logging.bash`: generic logger, canonical severity helpers, logging option
+  parsing, redaction/presentation ordering, and standard-error emission.
 - `tests/contract/`: active Bats public behavior and security contract.
 - `tests/contract/compat-bash43.bash`: representative Bash 4.3 compatibility
   contract executed against every generated artifact.
@@ -79,6 +82,7 @@ The maintained source order is explicit:
 lib/level.bash
 lib/redaction-core.bash
 lib/redaction.bash
+lib/presentation.bash
 lib/logging.bash
 ```
 
@@ -102,11 +106,21 @@ See ADR-003, ADR-005, ADR-006, ADR-012, and ADR-016.
 
 ## Public API Contract
 
-The Accepted initial public surface is:
+The Accepted public surface is:
 
 ```text
 bashlog_level_get
 bashlog_level_set
+
+bashlog_format_get
+bashlog_format_set
+bashlog_timestamp_get
+bashlog_timestamp_set
+bashlog_color_get
+bashlog_color_set
+bashlog_level_style_get
+bashlog_level_style_set
+bashlog_level_style_reset
 
 bashlog_log
 bashlog_debug
@@ -135,17 +149,39 @@ Important public semantics include:
 - `bashlog_redact` writes successful transformed output to standard output without
   adding a newline.
 - Logging calls select redaction explicitly with `--context CONTEXT`; there is no
-  ambient current context.
-- The renderer is `level: message` with lowercase canonical severity.
-- Timestamps, colors, tags, automatic environment metadata, caller-selected file
-  descriptors, syslog, network sinks, and `bashlog_die` are outside the initial
-  contract.
+  ambient current context and registered contexts remain inert until invoked.
+- Callers may alternatively invoke `bashlog_redact` themselves before ordinary
+  logging; both redaction workflows are first-class public behavior.
+- `--` terminates bashlog logging-option parsing when a format string could be
+  interpreted as an option.
+- The default format mode is `auto`: TTY stderr selects human rendering and
+  non-TTY stderr selects deterministic logfmt.
+- Timestamp mode defaults to `off`; `utc` and `local` use Bash-native time
+  formatting without external `date`.
+- Color mode defaults to `auto`; `never|auto|always` decides whether human
+  severity styling may be emitted.
+- bashlog-owned style applies only to the canonical severity token and resets
+  immediately after that token.  Timestamp, tags, punctuation, and message text
+  remain outside the style span.
+- Per-level style is symbolic and configurable with foreground color plus
+  `normal|bold|dim`; raw ANSI/SGR input is not accepted.
+- Default styles are emergency/alert/critical bold red, error red, warning
+  yellow, notice cyan, info green, and debug dim in the terminal default
+  foreground.
+- The logfmt renderer never contains bashlog-owned ANSI regardless of color or
+  per-level style configuration.
+- Repeatable `--tag TAG` metadata uses the documented ASCII token grammar and
+  preserves caller order.
+- Automatic host/deployment metadata, caller-selected file descriptors, syslog,
+  network sinks, and `bashlog_die` remain outside the contract.
 - Shared public return statuses are defined in `doc/bashlog-spec.md`.
 
 Do not expand the public surface merely because an internal helper is convenient
 to expose.  New public functions are compatibility commitments and require
 intentional specification, documentation, tests, and architectural review where
 appropriate.
+
+See ADR-025, ADR-026, ADR-027, and `doc/bashlog-spec.md` for presentation details.
 
 ## Documentation Standard
 
@@ -185,7 +221,8 @@ See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
 
 ADR-018 governs the overarching redaction security boundary.  ADR-020 through
 ADR-024 govern context lifecycle, rule registration, matcher semantics, and the
-final fail-closed output boundary.
+final fail-closed output boundary.  ADR-026 defines the semantic-data-before-
+presentation ordering for logger-managed redaction.
 
 Review-critical properties include:
 
@@ -201,8 +238,11 @@ Review-critical properties include:
 - glob and ERE patterns capable of matching empty text are rejected;
 - extglob is outside the initial glob contract;
 - ERE uses Bash `[[ =~ ]]` semantics and invalid EREs are rejected;
-- one ordered transformation pass is followed by non-transforming final
-  verification against every active rule;
+- one ordered transformation pass is followed by non-transforming verification;
+- logger-managed primary redaction operates on the fully formatted message and
+  each caller-supplied tag before renderer quoting, punctuation, or ANSI styling;
+- a context-protected completed record receives final non-transforming
+  verification after rendering and before stderr emission;
 - any remaining match or verification error suppresses output rather than
   triggering iterative rewriting;
 - the only redaction-failure diagnostic candidate is
@@ -211,6 +251,21 @@ Review-critical properties include:
 - no public operation returns secret-bearing registered rules;
 - context destruction is not secure memory erasure;
 - caller-side xtrace can expose expanded arguments before bashlog gains control.
+
+### Presentation Boundary
+
+Presentation is downstream of primary redaction.  Human punctuation, logfmt
+serialization, and ANSI severity styling must never become mechanisms by which
+bashlog discovers sensitive data.
+
+Global color policy and per-level appearance are separate.  `bashlog_color_set`
+controls whether styling may be emitted; `bashlog_level_style_set` controls the
+symbolic color and intensity of a severity token when styling is allowed.  Raw
+ANSI is deliberately excluded from the public style configuration surface.
+
+The ANSI reset must immediately follow the severity token.  Do not widen the
+bashlog-owned style span to timestamps, tags, punctuation, or message content
+without a new architectural decision.
 
 ### Ambient Shell State
 
@@ -258,12 +313,19 @@ are narrowly scoped in the Makefile and document intentional language use:
 - SC2154 where a module consumes globals declared by an earlier module in the
   explicit assembly order.
 
-Do not broaden these exclusions casually.
+Do not broaden these exclusions casually.  Narrow inline SC2154 suppressions are
+appropriate where presentation code deliberately consumes level-normalization
+output declared by the earlier `lib/level.bash` module.
 
 The active Bats suite under `tests/contract/` runs against development, ordinary,
 and minified artifacts.  Security-sensitive tests use negative assertions as well
 as positive assertions: protected originals must not appear in standard output,
 standard error, failure diagnostics, or alternate severity paths.
+
+Presentation tests must verify exact ANSI placement when color is forced,
+including that only the severity token is styled and that logfmt contains no
+bashlog-owned ANSI.  The Bash 4.3 fixture exercises representative style getters,
+overrides, resets, and rendered style behavior across every generated artifact.
 
 Contract child programs are passed to clean Bash processes through standard input
 with `bash -s -- ...` rather than embedded inside another single-quoted
