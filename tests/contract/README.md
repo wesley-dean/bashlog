@@ -1,7 +1,7 @@
 # bashlog Contract Test Suite
 
 This directory contains the red-phase behavior and security tests derived from
-`doc/bashlog-spec.md` and ADR-013 through ADR-024.
+the accepted `doc/bashlog-spec.md` and ADR-013 through ADR-024.
 
 The suite is intentionally **not** part of the current `tests/*.bats` Makefile
 wildcard.  The repository still contains the starter runtime, and wiring these
@@ -20,9 +20,9 @@ The implementation phase should begin by:
 5. demonstrating that the same contract passes against development, ordinary,
    and minified artifacts.
 
-These tests are written before the runtime implementation intentionally.  They
-are executable statements of the proposed contract, not examples of current
-behavior.
+These tests were written before the runtime implementation intentionally.  They
+are executable statements of the accepted contract, not examples of current
+implemented behavior.
 
 ## Test Organization
 
