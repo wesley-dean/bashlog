@@ -457,10 +457,12 @@ the function.
 Security-sensitive callers should ensure their tracing policy is appropriate
 around secret-bearing arguments.
 
-## Build and Consumption Model
+## Planned Build and Consumption Model
 
-Maintained source is modular and documentation-heavy.  The build produces three
-standalone representations:
+The current repository still contains implementation scaffolding inherited from
+`template-bash`; the bashlog-specific runtime and final artifact naming have not
+yet been implemented.  The intended first-release build will produce three
+standalone representations named:
 
 ```text
 dist/bashlog.dev.bash
@@ -471,14 +473,15 @@ dist/bashlog.min.bash
 dist/bashlog.min.bash.sha256
 ```
 
-- `bashlog.dev.bash` retains maintained Doxygen comments.
-- `bashlog.bash` removes full-line source comments while preserving behavior.
-- `bashlog.min.bash` is the minified consumer representation.
+The planned artifact roles are:
 
-All three executable/sourceable artifacts are expected to satisfy the same
-behavior contract.
+- `bashlog.dev.bash`: retain maintained Doxygen comments;
+- `bashlog.bash`: remove full-line source comments while preserving behavior;
+- `bashlog.min.bash`: provide the minified consumer representation.
 
-The `.sha256` companions use conventional SHA-256 checksum-file syntax.
+All three sourceable artifacts are intended to satisfy the same behavior
+contract.  The `.sha256` companions will use conventional SHA-256 checksum-file
+syntax.
 
 The expected consumption model is a pinned standalone artifact, commonly
 materialized into a repository by [bashdeps](https://github.com/wesley-dean/bashdeps)
@@ -494,9 +497,9 @@ bashlog release
     -> source from consumer
 ```
 
-bashlog itself has no runtime dependency on bashdeps or on a particular vendor
-directory layout.  bashdeps is an acquisition mechanism used before runtime, not
-a component of the logging library.
+bashlog itself will have no runtime dependency on bashdeps or on a particular
+vendor-directory layout.  bashdeps is an acquisition mechanism used before
+runtime, not a component of the logging library.
 
 ## Documentation Model
 
@@ -540,15 +543,19 @@ captured output for the behavior under test.
 
 ## Build Lifecycle
 
-GNU Make is the canonical development and CI orchestration surface:
+GNU Make is the canonical development and CI orchestration surface.  The current
+starter-derived Makefile already provides the project-family lifecycle, although
+bashlog-specific source assembly and artifact naming still need to replace the
+starter behavior during implementation:
 
 - `make deps` synchronizes repository dependencies and may use the network.
 - `make deps-check` verifies prepared dependency state offline.
-- `make build` creates release artifacts without dependency synchronization.
+- `make build` creates the currently configured generated artifacts without
+  dependency synchronization.
 - `make all` runs dependency convergence and then builds.
 - `make check` performs maintained-source validation.
 - `make format` uses the project shfmt policy.
-- `make test` exercises every generated artifact flavor.
+- `make test` exercises every currently configured generated artifact flavor.
 - `make test-report` writes JUnit reports under `test-results/`.
 - `make docs` generates Doxygen reference output under `doc/reference/` using the
   prepared bash-doxygen filter.
