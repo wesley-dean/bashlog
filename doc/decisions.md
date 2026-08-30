@@ -12,6 +12,13 @@ conflict rather than silently choosing the shorter wording.
 Accepted ADRs describe current architectural decisions.  Proposed ADRs describe
 the current design proposal and are not yet binding until accepted.
 
+The draft normative public behavior derived from these decisions is documented in
+[`doc/bashlog-spec.md`](bashlog-spec.md).  The specification defines function
+names, arguments, output streams, return statuses, threshold behavior, matcher
+semantics, and failure behavior; it does not replace the architectural reasoning
+in the ADRs and remains Draft while its governing bashlog-specific ADRs are
+Proposed.
+
 ## Accepted Decisions
 
 ### ADR-000: Capability Scope, Epistemic Honesty, and Separation of Concerns
@@ -27,8 +34,8 @@ See [ADR-000](adr/ADR-000-capability-scope-and-epistemic-honesty.md).
 
 ADRs are the canonical record of durable architectural reasoning;
 `doc/decisions.md` is the concise decision map; `AGENTS.md` is an operational
-navigation aid; Doxygen comments own implementation-level contracts; a future
-`doc/bashlog-spec.md` will own stable current public behavior; and tests provide
+navigation aid; Doxygen comments own implementation-level contracts;
+`doc/bashlog-spec.md` owns the draft normative public behavior; and tests provide
 evidence rather than superseding architectural intent.
 
 See [ADR-001](adr/ADR-001-documentation-and-decision-hierarchy.md).
