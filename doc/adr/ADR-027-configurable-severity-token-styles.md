@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed
+Accepted
 
 ## Intent and Documentation Posture
 
@@ -416,12 +416,12 @@ intensity per canonical severity.  The default visual behavior remains useful
 without configuration, while applications can align the signifiers with local
 conventions or accessibility needs.
 
-Implementation will replace the fixed level-to-SGR mapping with readable
-per-level symbolic state and a bounded symbolic-to-SGR encoder.  Tests must cover
-all defaults, per-level overrides, numeric and named severity selection, atomic
-invalid changes, single-level reset, full reset, `default normal`, global
-`never|auto|always` interaction, severity-only ANSI placement, absence of ANSI in
-logfmt, Bash 4.3 behavior, and context-protected final verification.
+Implementation replaces the fixed level-to-SGR mapping with readable per-level
+symbolic state and a bounded symbolic-to-SGR encoder.  Tests cover the defaults,
+per-level overrides, numeric and named severity selection, atomic invalid changes,
+single-level reset, full reset, `default normal`, global `never|auto|always`
+interaction, severity-only ANSI placement, absence of ANSI in logfmt, Bash 4.3
+behavior, and context-protected final verification.
 
 ## Source Lineage
 
