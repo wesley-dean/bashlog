@@ -48,6 +48,10 @@ declare -g __bashlog_render_result=
 ## @brief Internal output slot containing one quoted and escaped logfmt value.
 declare -g __bashlog_logfmt_quoted_value=
 
+## @var __bashlog_human_color_code_value
+## @brief Internal output slot containing the selected ANSI SGR code.
+declare -g __bashlog_human_color_code_value=
+
 ## @fn bashlog_format_get()
 ## @brief Writes the active renderer mode.
 ## @details
@@ -204,17 +208,34 @@ __bashlog_format_resolve() {
   return 0
 }
 
+## @fn __bashlog_timestamp_utc()
+## @brief Generates one UTC timestamp without changing caller timezone state.
+## @details
+## The function-local `TZ=UTC0` applies only while Bash builtin printf performs
+## the UTC conversion.  The generated value is returned through the shared
+## `__bashlog_timestamp_value` output slot.
+## @retval 0 UTC timestamp generation succeeded.
+## @retval 70 Bash builtin time formatting failed.
+__bashlog_timestamp_utc() {
+  local TZ=UTC0
+
+  if ! printf -v __bashlog_timestamp_value '%(%Y-%m-%dT%H:%M:%SZ)T' -1; then
+    __bashlog_timestamp_value=
+    return 70
+  fi
+
+  return 0
+}
+
 ## @fn __bashlog_timestamp_acquire()
 ## @brief Generates one optional Bash-native timestamp for an eligible log record.
 ## @details
-## UTC generation uses function-local `TZ=UTC0`; local generation inherits the
-## caller's timezone.  Function-local state prevents UTC selection from modifying
-## caller-visible `TZ` after the function returns.
+## UTC generation delegates to a helper with function-local timezone state.  Local
+## generation does not shadow or assign `TZ`, so it uses the caller's normal local
+## time configuration without modifying it.
 ## @retval 0 A timestamp was generated or timestamping is disabled.
 ## @retval 70 Bash time formatting failed or internal state is invalid.
 __bashlog_timestamp_acquire() {
-  local TZ
-
   __bashlog_timestamp_value=
 
   case ${__bashlog_timestamp_mode} in
@@ -222,11 +243,8 @@ __bashlog_timestamp_acquire() {
       return 0
       ;;
     utc)
-      TZ=UTC0
-      if ! printf -v __bashlog_timestamp_value '%(%Y-%m-%dT%H:%M:%SZ)T' -1; then
-        __bashlog_timestamp_value=
-        return 70
-      fi
+      __bashlog_timestamp_utc
+      return $?
       ;;
     local)
       if ! printf -v __bashlog_timestamp_value '%(%Y-%m-%dT%H:%M:%S%z)T' -1; then
