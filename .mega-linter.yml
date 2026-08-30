@@ -41,9 +41,6 @@ JAVASCRIPT_DEFAULT_STYLE: prettier
 # and fail the workflow.
 SARIF_REPORTER: true
 
-# only scan the files in This commit, not the entire history of the repo
-REPOSITORY_GITLEAKS_ARGUMENTS: --no-git
-
 # don't scan the .git directory GitHub creates at runtime
 REPOSITORY_TRUFFLEHOG_ARGUMENTS: "--exclude-paths=.trufflehogignore"
 
@@ -60,6 +57,18 @@ CLEAR_REPORT_FOLDER: true
 # don't check the libs, tests, vendor, or examples directories for
 # non-executable bash files
 BASH_EXEC_FILTER_REGEX_EXCLUDE: "(libs?|tests?|examples?|vendor)"
+
+# ShellCheck exceptions required by the Accepted bashlog implementation:
+#   - SC2053: lib/redaction-core.bash intentionally uses a dynamic RHS as the
+#     Bash glob matcher pattern.
+#   - SC2059: lib/logging.bash intentionally accepts a caller-supplied Bash
+#     printf format string as part of the public API.
+#   - SC2154: maintained modules consume globals initialized by earlier modules
+#     in the explicit generated-artifact assembly order.
+# `make check` scopes these exceptions to the exact modules that require them;
+# MegaLinter invokes ShellCheck independently per file, so its linter arguments
+# carry the equivalent rule set for the files it scans.
+BASH_SHELLCHECK_ARGUMENTS: -e SC2053,SC2059,SC2154
 
 # shfmt will..
 #   - use multiples of 2 spaces for indenting

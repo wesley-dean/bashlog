@@ -1,20 +1,15 @@
 # shellcheck shell=bash
 ## @file lib/redaction.bash
-## @brief Defines the documented public redaction interface for bashlog.
+## @brief Implements the documented public redaction interface for bashlog.
 ## @details
 ## This module owns redaction-rule registration, redaction-context destruction,
-## and the transform-only redaction API.  The public contract is intentionally
-## explicit because accepted rules become security obligations for operations
-## that select the corresponding context.
-##
-## This file is currently an interface-documentation scaffold.  It is not yet
-## assembled into the generated bashlog artifact.  The placeholder function
-## bodies exist only so the exact `bash-doxygen` documentation can live beside
-## the declarations it will govern before implementation begins.
+## and the transform-only redaction API.  The internal matcher and verification
+## engine lives in `lib/redaction-core.bash`; this module provides the stable
+## namespaced public boundary around that state.
 ##
 ## Redaction state is append-only while a context is active.  Replacement text
-## is always literal.  The implementation must fail closed when transformation
-## or final verification cannot establish that output satisfies the selected
+## is always literal.  The implementation fails closed when transformation or
+## final verification cannot establish that output satisfies the selected
 ## policy.  Context destruction releases bashlog-owned active references but is
 ## not secure memory erasure.
 ## @see doc/bashlog-spec.md
@@ -54,8 +49,8 @@
 ## @par Standard Output
 ## No output.
 ## @par Standard Error
-## No success output.  Failure diagnostics must not reproduce the supplied
-## pattern or replacement.
+## No success output.  Failure diagnostics do not reproduce the supplied pattern
+## or replacement.
 ## @retval 0 The rule was appended successfully and an unseen context, if any,
 ## became active atomically.
 ## @retval 64 Invalid argument count, invalid context identifier, or unknown
@@ -72,8 +67,73 @@
 ## @see bashlog_redact()
 ## @see bashlog_redaction_context_destroy()
 bashlog_redaction_add() {
-  # Non-runtime documentation scaffold.  Implementation replaces this body.
-  return 70
+  local context
+  local matcher
+  local pattern
+  local replacement
+  local context_index=-1
+  local index
+  local validation_status
+
+  if (( $# != 4 )); then
+    return 64
+  fi
+
+  context=$1
+  matcher=$2
+  pattern=$3
+  replacement=$4
+
+  if ! __bashlog_context_name_valid "${context}"; then
+    return 64
+  fi
+
+  case ${matcher} in
+    fixed | glob | ere) ;;
+    *) return 64 ;;
+  esac
+
+  if __bashlog_context_find "${context}"; then
+    context_index=${__bashlog_context_index}
+    if [ "${__bashlog_context_states[context_index]}" != active ]; then
+      return 69
+    fi
+  fi
+
+  if __bashlog_rule_validate "${matcher}" "${pattern}" "${replacement}"; then
+    validation_status=0
+  else
+    validation_status=$?
+  fi
+  if (( validation_status != 0 )); then
+    return "${validation_status}"
+  fi
+
+  if (( context_index >= 0 )); then
+    for ((index = 0; index < __bashlog_rule_count; index++)); do
+      if (( __bashlog_rule_contexts[index] != context_index )); then
+        continue
+      fi
+      if [ "${__bashlog_rule_matchers[index]}" = "${matcher}" ] && \
+        [ "${__bashlog_rule_patterns[index]}" = "${pattern}" ]; then
+        return 65
+      fi
+    done
+  else
+    context_index=${__bashlog_context_count}
+    __bashlog_context_names[context_index]=${context}
+    __bashlog_context_states[context_index]=active
+    __bashlog_context_count=$((__bashlog_context_count + 1))
+  fi
+
+  index=${__bashlog_rule_count}
+  __bashlog_rule_contexts[index]=${context_index}
+  __bashlog_rule_matchers[index]=${matcher}
+  __bashlog_rule_patterns[index]=${pattern}
+  __bashlog_rule_replacements[index]=${replacement}
+  __bashlog_rule_count=$((__bashlog_rule_count + 1))
+
+  return 0
 }
 
 ## @fn bashlog_redaction_context_destroy()
@@ -96,7 +156,7 @@ bashlog_redaction_add() {
 ## @par Standard Output
 ## No output.
 ## @par Standard Error
-## No routine output on success.  Failure diagnostics must not reveal
+## No routine output on success.  Failure diagnostics do not reveal
 ## secret-bearing context rule contents.
 ## @retval 0 The active context was destroyed as a bashlog policy object.
 ## @retval 64 Invalid argument count or invalid context identifier.
@@ -110,8 +170,38 @@ bashlog_redaction_add() {
 ## @see bashlog_redaction_add()
 ## @see bashlog_redact()
 bashlog_redaction_context_destroy() {
-  # Non-runtime documentation scaffold.  Implementation replaces this body.
-  return 70
+  local context_index
+  local index
+  local status
+
+  if (( $# != 1 )); then
+    return 64
+  fi
+
+  if __bashlog_context_resolve_active "$1"; then
+    status=0
+  else
+    status=$?
+  fi
+  if (( status != 0 )); then
+    return "${status}"
+  fi
+
+  context_index=${__bashlog_context_index}
+  __bashlog_context_states[context_index]=destroyed
+
+  for ((index = 0; index < __bashlog_rule_count; index++)); do
+    if (( __bashlog_rule_contexts[index] != context_index )); then
+      continue
+    fi
+
+    __bashlog_rule_contexts[index]=-1
+    __bashlog_rule_matchers[index]=
+    __bashlog_rule_patterns[index]=
+    __bashlog_rule_replacements[index]=
+  done
+
+  return 0
 }
 
 ## @fn bashlog_redact()
@@ -158,6 +248,31 @@ bashlog_redaction_context_destroy() {
 ## @see bashlog_redaction_add()
 ## @see bashlog_redaction_context_destroy()
 bashlog_redact() {
-  # Non-runtime documentation scaffold.  Implementation replaces this body.
-  return 70
+  local context_index
+  local status
+
+  if (( $# != 2 )); then
+    return 64
+  fi
+
+  if __bashlog_context_resolve_active "$1"; then
+    status=0
+  else
+    status=$?
+  fi
+  if (( status != 0 )); then
+    return "${status}"
+  fi
+  context_index=${__bashlog_context_index}
+
+  if ! __bashlog_redact_context "${context_index}" "$2"; then
+    __bashlog_emit_suppression_diagnostic "${context_index}"
+    return 70
+  fi
+
+  if ! printf '%s' "${__bashlog_redacted_result}"; then
+    return 70
+  fi
+
+  return 0
 }

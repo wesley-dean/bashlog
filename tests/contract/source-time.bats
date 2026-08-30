@@ -1,11 +1,18 @@
 #!/usr/bin/env bats
 
 setup() {
+  bats_require_minimum_version 1.5.0
   : "${BASHLOG_ARTIFACT:?BASHLOG_ARTIFACT must identify the artifact under test}"
 }
 
+run_bashlog_script() {
+  run --separate-stderr bash --noprofile --norc -s -- "${BASHLOG_ARTIFACT}" "$@"
+}
+
 @test "sourcing bashlog is silent on stdout and stderr" {
-  run --separate-stderr bash --noprofile --norc -c 'source "$1"' _ "${BASHLOG_ARTIFACT}"
+  run_bashlog_script <<'BASH'
+    source "$1"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -13,13 +20,13 @@ setup() {
 }
 
 @test "sourcing bashlog preserves existing traps" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     trap "printf trap-fired >/dev/null" USR1
     before="$(trap -p)"
     source "$1"
     after="$(trap -p)"
     [[ ${before} == "${after}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -27,7 +34,7 @@ setup() {
 }
 
 @test "sourcing bashlog preserves set shell options" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     set +e
     set -u
     set +o pipefail
@@ -35,7 +42,7 @@ setup() {
     source "$1"
     after="$(set +o)"
     [[ ${before} == "${after}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -43,13 +50,13 @@ setup() {
 }
 
 @test "sourcing bashlog preserves shopt options" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     shopt -u extglob nullglob expand_aliases
     before="$(shopt -p)"
     source "$1"
     after="$(shopt -p)"
     [[ ${before} == "${after}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -57,7 +64,7 @@ setup() {
 }
 
 @test "sourcing bashlog does not replace caller generic functions" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     info() { printf "%s\n" caller-info; }
     warn() { printf "%s\n" caller-warn; }
     error() { printf "%s\n" caller-error; }
@@ -71,7 +78,7 @@ setup() {
     [[ $(declare -f warn) == "${before_warn}" ]]
     [[ $(declare -f error) == "${before_error}" ]]
     [[ $(declare -f die) == "${before_die}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -79,7 +86,7 @@ setup() {
 }
 
 @test "sourcing bashlog does not define generic convenience functions" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     source "$1"
     for name in debug info warn warning error critical alert emergency die; do
       if declare -F "${name}" >/dev/null; then
@@ -87,7 +94,7 @@ setup() {
         exit 1
       fi
     done
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -95,7 +102,7 @@ setup() {
 }
 
 @test "sourcing bashlog preserves caller aliases and expand_aliases state" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     shopt -s expand_aliases
     alias info="printf caller-alias"
     before_alias="$(alias info)"
@@ -105,7 +112,7 @@ setup() {
     after_shopt="$(shopt -p expand_aliases)"
     [[ ${before_alias} == "${after_alias}" ]]
     [[ ${before_shopt} == "${after_shopt}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -113,12 +120,12 @@ setup() {
 }
 
 @test "sourcing bashlog does not export functions" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     before="$(export -f)"
     source "$1"
     after="$(export -f)"
     [[ ${before} == "${after}" ]]
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -126,7 +133,7 @@ setup() {
 }
 
 @test "documented public functions are defined after sourcing" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     source "$1"
     for name in \
       bashlog_level_get bashlog_level_set \
@@ -136,7 +143,7 @@ setup() {
       bashlog_redaction_context_destroy bashlog_redact; do
       declare -F "${name}" >/dev/null || exit 1
     done
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
@@ -144,13 +151,13 @@ setup() {
 }
 
 @test "representative runtime behavior works with PATH unable to resolve commands" {
-  run --separate-stderr bash --noprofile --norc -c '
+  run_bashlog_script <<'BASH'
     PATH=/definitely/not/a/real/path
     source "$1"
     bashlog_level_set debug || exit
     bashlog_redaction_add auth fixed secret "[REDACTED]" || exit
     bashlog_info --context auth "value=%s" secret
-  ' _ "${BASHLOG_ARTIFACT}"
+BASH
 
   [ "${status}" -eq 0 ]
   [ -z "${output}" ]
