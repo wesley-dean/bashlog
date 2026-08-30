@@ -14,10 +14,10 @@ now proven the core logging and redaction contract across all generated artifact
 forms and Bash 4.3.  Optional presentation features can therefore be considered
 without using them to conceal uncertainty in the core design.
 
-The decision is intentionally conservative about defaults.  Presentation
-features should make logs more useful to humans without silently changing
-existing output, weakening redaction, expanding the external-command boundary, or
-making the security-critical path difficult to reason about.
+The decision favors useful defaults while remaining conservative about redirected
+and service-oriented output.  Presentation features should make logs more useful
+to humans without weakening redaction, expanding the external-command boundary,
+or making the security-critical path difficult to reason about.
 
 ## Context
 
@@ -48,7 +48,10 @@ feature independently wherever it is easiest to implement.
 
 ## Decision Drivers
 
-- Preserve exact existing output when new features are not enabled.
+- Preserve the existing plain output form for redirected and non-terminal stderr
+  unless the caller explicitly requests color.
+- Provide a useful interactive default before the first public release rather
+  than requiring every terminal user to discover and enable color manually.
 - Keep all new runtime behavior within Bash 4.3 and the no-external-command
   guarantee of ADR-014.
 - Ensure caller-supplied tags participate in the same redaction boundary as the
@@ -59,8 +62,8 @@ feature independently wherever it is easiest to implement.
   collection of environment variables.
 - Avoid an arbitrary template language that would introduce another parsing and
   escaping surface.
-- Make terminal-oriented presentation optional so redirected logs remain clean
-  by default.
+- Keep redirected, CI, service, and persisted logs free of bashlog-owned ANSI
+  decoration by default.
 - Keep timestamp acquisition late enough that threshold-suppressed messages do
   not perform unnecessary metadata work.
 - Preserve caller locale and shell state while generating metadata.
@@ -68,12 +71,16 @@ feature independently wherever it is easiest to implement.
 ## Decision
 
 bashlog SHALL add optional timestamp, tag, and color presentation capabilities.
-All are additive.  The default configuration SHALL preserve the existing
-rendered form exactly:
+Timestamping remains disabled by default and tags remain per-call opt-in.  Color
+SHALL default to terminal-sensitive `auto` mode.
 
-```text
-level: message
-```
+Therefore, with timestamp `off` and no tags:
+
+- non-terminal standard error SHALL retain the existing `level: message` bytes;
+- terminal standard error MAY include the documented bashlog-owned severity color
+  decoration; and
+- callers that require byte-for-byte plain terminal output MAY select color mode
+  `never` explicitly.
 
 ### Timestamp Configuration
 
@@ -206,7 +213,7 @@ auto
 always
 ```
 
-The default SHALL be `never`.
+The default SHALL be `auto`.
 
 `never` SHALL emit no bashlog-owned ANSI color sequences.
 
@@ -249,26 +256,30 @@ justify the additional compatibility and security surface.
 
 ## Promises
 
-1. **Backward-compatible defaults.**  With timestamp `off`, color `never`, and no
-   tags, emitted output remains the existing `level: message` form.
+1. **Redirect-safe default.**  With timestamp `off`, color `auto`, and no tags,
+   non-terminal stderr retains the existing plain `level: message` output.
 
-2. **No external metadata helper.**  Timestamp generation and terminal detection
+2. **Useful interactive default.**  When stderr is a terminal, the default `auto`
+   mode may add the documented severity-aware ANSI color without requiring caller
+   configuration.
+
+3. **No external metadata helper.**  Timestamp generation and terminal detection
    use Bash facilities only.
 
-3. **Tags are redacted as sink-bound data.**  Caller-supplied tags cannot bypass
+4. **Tags are redacted as sink-bound data.**  Caller-supplied tags cannot bypass
    the complete-record redaction boundary.
 
-4. **Color does not alter redaction matching semantics.**  Redaction transforms
+5. **Color does not alter redaction matching semantics.**  Redaction transforms
    the plain semantic record before ANSI bytes are introduced.
 
-5. **Decorated protected output is verified again.**  When a context is active,
+6. **Decorated protected output is verified again.**  When a context is active,
    the final decorated candidate is checked before emission.
 
-6. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
+7. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
    severity policy does not acquire a timestamp, construct the message, or add
    presentation decoration.
 
-7. **Caller shell state is preserved.**  Timestamp and terminal handling do not
+8. **Caller shell state is preserved.**  Timestamp and terminal handling do not
    leave caller `TZ`, shell options, `shopt` options, or other caller-owned state
    changed.
 
@@ -296,6 +307,11 @@ justify the additional compatibility and security surface.
 7. The project does not promise a caller-defined rendering language in this
    tranche.
 
+8. Existing terminal output is not promised to remain byte-for-byte identical
+   after this feature is adopted, because the selected default intentionally
+   adds color when stderr is a terminal.  Callers requiring plain terminal bytes
+   can select `never`.
+
 ## Adversary and Failure Model
 
 This decision accounts for:
@@ -320,7 +336,7 @@ of the first public contract.
 ## Operational Constraints
 
 - Timestamp default MUST be `off`.
-- Color default MUST be `never`.
+- Color default MUST be `auto`.
 - Tags MUST be explicit per logging call and MAY be repeated.
 - Tags MUST match `[A-Za-z0-9_.:-]+` in an explicitly ASCII interpretation.
 - Plain semantic rendering MUST occur before redaction.
@@ -330,6 +346,8 @@ of the first public contract.
 - Context-protected decorated output MUST receive a second non-transforming final
   verification before emission.
 - `auto` color MUST use Bash terminal testing rather than an external command.
+- `auto` color MUST emit no bashlog-owned ANSI sequences when stderr is not a
+  terminal.
 - Timestamp generation MUST use Bash builtin facilities and MUST NOT invoke
   external `date`.
 - New configuration setters MUST validate atomically and leave prior state
@@ -338,23 +356,25 @@ of the first public contract.
 
 ## Considered Alternatives
 
-### Enable Color Automatically by Default
+### Default to `never`
 
-Interactive color is pleasant and common in developer tooling.
+This would preserve byte-for-byte terminal output across an upgrade and make all
+color explicitly opt-in.
 
-It was rejected as the default because bashlog is a library used in scripts,
-redirected processes, CI, services, and persisted logs.  Upgrading the library
-should not silently change emitted bytes.  Callers that want terminal-sensitive
-behavior can opt into `auto`.
+It was rejected because this work is occurring before the first public release,
+when the project can still choose the more useful default without breaking an
+established stable consumer contract.  `auto` gives interactive users useful
+severity color while continuing to emit plain bytes when stderr is redirected.
+Callers that require plain terminal output have an explicit `never` mode.
 
-### Make `auto` the Default
+### Default to `always`
 
-This would avoid ANSI output when redirected while providing a more polished
-interactive experience.
+This would make presentation deterministic regardless of file-descriptor type and
+would guarantee that terminal users see color.
 
-It was rejected for the same compatibility reason.  Even terminal output is
-observable public behavior, and the first implementation deliberately emitted no
-ANSI sequences.  `never` is the least surprising upgrade default.
+It was rejected because ANSI bytes would then appear in files, CI captures,
+service logs, and other non-terminal sinks unless every caller remembered to turn
+color off.  That is a poor library default.
 
 ### Color Only the Severity Word Before Redaction
 
@@ -402,7 +422,11 @@ callers.
 
 ## Consequences
 
-The renderer becomes richer, but its default behavior remains unchanged.
+The renderer becomes richer.  Redirected/non-terminal output remains plain by
+default, while interactive stderr gains severity-aware color unless the caller
+selects `never`.  This is an intentional pre-release behavior choice rather than
+an accidental compatibility change.
+
 Implementation will need explicit presentation state, additional option parsing,
 and a second final-verification step for protected output after decoration.
 
@@ -413,8 +437,8 @@ context after all bashlog-owned decoration is complete.
 
 Tests must cover every combination that materially changes the boundary,
 including timestamps with redaction, tags containing protected text, color in
-`never`/`auto`/`always` modes, redirected standard error, invalid tag/configuration
-input, and post-decoration verification.
+`never`/`auto`/`always` modes, terminal and redirected standard error, invalid
+tag/configuration input, and post-decoration verification.
 
 ## Source Lineage
 
@@ -424,7 +448,7 @@ ADR-017's common logging pipeline, and ADR-024's requirement that all sink-bound
 content satisfy the final redaction boundary.
 
 It also preserves the project's established preference for explicit
-configuration, caller-owned convenience wrappers, and byte-stable defaults.
+configuration, caller-owned convenience wrappers, and clean non-terminal output.
 
 ## Open Questions and Follow-Ups
 
