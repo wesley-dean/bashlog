@@ -99,6 +99,28 @@ BASH
   [ "${output}" = 'ssn=[SSN]' ]
 }
 
+@test "anchored ERE locates the match selected against the complete input" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_redaction_add ctx ere 'foo$' '[END]' || exit
+    bashlog_redact ctx 'foo middle foo'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = 'foo middle [END]' ]
+}
+
+@test "start-anchored ERE does not match an identical later substring" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_redaction_add ctx ere '^foo' '[START]' || exit
+    bashlog_redact ctx 'foo middle foo'
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = '[START] middle foo' ]
+}
+
 @test "invalid ERE is rejected before context creation" {
   run_bashlog_script <<'BASH'
     source "$1"
@@ -143,6 +165,22 @@ BASH
 
   [ "${status}" -eq 0 ]
   [ "${output}" = 'value=&' ]
+}
+
+@test "ambient nocasematch does not weaken case-sensitive glob and ERE semantics" {
+  run_bashlog_script <<'BASH'
+    shopt -s nocasematch
+    source "$1"
+    bashlog_redaction_add ctx glob 'Secret?' '[G]' || exit
+    bashlog_redaction_add ctx ere 'Token[0-9]+' '[E]' || exit
+    value="$(bashlog_redact ctx 'secret1 Secret2 token3 Token4')" || exit
+    shopt -q nocasematch || exit 1
+    printf '%s\n' "${value}"
+BASH
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = 'secret1 [G] token3 [E]' ]
+  [ -z "${stderr}" ]
 }
 
 @test "rule registration order is deterministic across matcher types" {
