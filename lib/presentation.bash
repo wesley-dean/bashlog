@@ -36,29 +36,11 @@ declare -g __bashlog_color_mode=auto
 
 ## @var __bashlog_level_style_colors
 ## @brief Per-severity symbolic foreground colors indexed by normalized level.
-declare -ga __bashlog_level_style_colors=(
-  red
-  red
-  red
-  red
-  yellow
-  cyan
-  green
-  default
-)
+declare -ga __bashlog_level_style_colors=(red red red red yellow cyan green default)
 
 ## @var __bashlog_level_style_intensities
 ## @brief Per-severity symbolic intensities indexed by normalized level.
-declare -ga __bashlog_level_style_intensities=(
-  bold
-  bold
-  bold
-  normal
-  normal
-  normal
-  normal
-  dim
-)
+declare -ga __bashlog_level_style_intensities=(bold bold bold normal normal normal normal dim)
 
 ## @var __bashlog_resolved_format
 ## @brief Internal output slot containing the renderer selected for one call.
@@ -217,6 +199,7 @@ bashlog_level_style_get() {
   fi
 
   __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
   level_number=${__bashlog_level_number}
   printf '%s %s\n' \
     "${__bashlog_level_style_colors[level_number]}" \
@@ -250,6 +233,7 @@ bashlog_level_style_set() {
   fi
 
   __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
   level_number=${__bashlog_level_number}
   color=$2
   intensity=$3
@@ -296,6 +280,7 @@ bashlog_level_style_reset() {
   fi
 
   __bashlog_level_to_number "$1" || return 64
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
   level_number=${__bashlog_level_number}
 
   case ${level_number} in
@@ -452,6 +437,7 @@ __bashlog_human_color_code() {
     __bashlog_human_color_code_value=
     return 70
   fi
+  # shellcheck disable=SC2154 # Declared by lib/level.bash earlier in assembly.
   level_number=${__bashlog_level_number}
   color=${__bashlog_level_style_colors[level_number]}
   intensity=${__bashlog_level_style_intensities[level_number]}
@@ -635,6 +621,7 @@ __bashlog_render_human() {
 ## @param message Formatted caller message, already redacted when requested.
 ## @param tags Zero or more caller tags, already redacted when requested.
 ## @retval 0 The rendered record was written to `__bashlog_render_result`.
+## @retval 70 Presentation state is invalid.
 __bashlog_render_logfmt() {
   local level=$1
   local timestamp=$2
