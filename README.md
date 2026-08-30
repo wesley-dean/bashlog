@@ -118,7 +118,10 @@ normalization, direct syslog/journald/network/file delivery, or automatic
 host/container/service metadata.
 
 The complete normative contract is in
-[`doc/bashlog-spec.md`](doc/bashlog-spec.md).
+[`doc/bashlog-spec.md`](doc/bashlog-spec.md).  The engineering posture behind the
+contract is summarized in
+[`doc/engineering-philosophy.md`](doc/engineering-philosophy.md), and the explicit
+security analysis is maintained in [`doc/threat-model.md`](doc/threat-model.md).
 
 ## Runtime Requirements
 
@@ -427,10 +430,15 @@ See [`doc/testing.md`](doc/testing.md) and
 bashlog treats documentation as part of the architecture:
 
 - `README.md` provides public orientation and representative usage;
+- `doc/engineering-philosophy.md` collects reusable design principles such as
+  developer agency, UNIX-style composition, explicit contracts, bounded promises,
+  dependency skepticism, and readable/auditable implementation;
 - `doc/bashlog-spec.md` defines normative observable behavior;
 - `doc/decisions.md` is the concise architectural decision map;
 - `doc/adr/*.md` preserves durable reasoning, alternatives, boundaries, and
   consequences;
+- `doc/threat-model.md` consolidates assets, trusted computing base, trust
+  boundaries, threats, mitigations, evidence, residual risk, and review triggers;
 - `AGENTS.md` is the contributor-oriented operational map;
 - maintained Doxygen comments document implementation contracts beside source;
 - Bats tests provide executable evidence for observable guarantees.
