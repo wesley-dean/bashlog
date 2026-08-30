@@ -1,33 +1,60 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report reproducible bashlog behavior that differs from the documented contract
 title: ""
 labels: bug
 assignees: ""
 ---
 
-## Describe the bug: what you experienced
+## Problem
 
-<!-- A clear and concise description of the bug -->
+Describe the behavior you observed and why it appears incorrect.
 
-## Steps to Reproduce
+## Environment
 
-<!-- Steps to reproduce the behavior -->
+- bashlog version, release, or commit:
+- artifact sourced (`bashlog.dev.bash`, `bashlog.bash`, or `bashlog.min.bash`):
+- Bash version (`bash --version`):
+- operating system / distribution:
+- relevant shell options or `shopt` settings, if any:
+- is standard error attached to a TTY or redirected/captured?:
 
-1. Go to '…'
-2. Click on '….'
-3. Scroll down to '….'
-4. See error
+## Minimal Reproduction
 
-## Expected behavior: what you expected
+Please provide the smallest Bash program that reproduces the problem.  Use
+synthetic values rather than real credentials, tokens, or private data.
 
-<!-- please provide a clear and concise description of what you
-expected to happen. -->
+```bash
+# reproduction
+```
 
-### Screenshots
+## Expected Behavior
 
-<!-- If applicable, add screenshots to help explain your problem. -->
+What did you expect bashlog to do?  If applicable, identify the relevant section
+of `doc/bashlog-spec.md` or README.
 
-## Additional context
+## Actual Behavior
 
-<!-- Add any other context about the problem here. -->
+Include the exit status and distinguish standard output from standard error when
+that matters.
+
+```text
+stdout:
+
+stderr:
+
+status:
+```
+
+## Configuration
+
+Include relevant bashlog configuration, such as level threshold, renderer,
+timestamp mode, color mode, severity style overrides, tags, and whether a
+redaction context was explicitly selected.
+
+## Additional Context
+
+Add any other information that would help reproduce or understand the problem.
+
+Do not report suspected vulnerabilities or include sensitive information in this
+public template.  Follow `SECURITY.md` for security reports.
