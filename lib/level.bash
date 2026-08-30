@@ -14,8 +14,17 @@
 ## @see doc/adr/ADR-014-pure-bash-runtime-and-external-command-boundary.md
 ## @see doc/adr/ADR-017-logging-pipeline-levels-formatting-and-emission.md
 
+## @var __bashlog_active_level
+## @brief Numeric process-local logging threshold, initially info (`6`).
 declare -g __bashlog_active_level=6
+
+## @var __bashlog_level_number
+## @brief Internal output slot used while normalizing a severity to its number.
 declare -g __bashlog_level_number=
+
+## @var __bashlog_level_name
+## @brief Internal output slot used while resolving a numeric severity to its name.
+declare -g __bashlog_level_name=
 
 ## @fn __bashlog_level_to_number()
 ## @brief Resolves one canonical severity name or number to its numeric value.
@@ -54,7 +63,6 @@ __bashlog_level_to_number() {
 ## @param level Numeric severity from 0 through 7.
 ## @retval 0 The level was valid and `__bashlog_level_name` was updated.
 ## @retval 64 The argument count or numeric level was invalid.
-declare -g __bashlog_level_name=
 __bashlog_level_to_name() {
   if (( $# != 1 )); then
     return 64
