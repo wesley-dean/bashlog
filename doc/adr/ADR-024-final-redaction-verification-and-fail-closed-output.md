@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed
+Accepted
 
 ## Intent and Documentation Posture
 
@@ -411,14 +411,8 @@ pass plus one bounded verification pass instead of iterative hidden rewriting.
 
 ## Open Questions and Follow-Ups
 
-The normative specification must define:
-
-- the exact non-success status for suppression;
-- the fixed diagnostic wording, if a visible diagnostic is used;
-- how a logging call selects an active context;
-- and observable behavior when output is fully silent because even the fixed
-  failure diagnostic cannot be verified.
-
+The normative specification defines the public suppression status, fixed safe
+diagnostic wording, context-selection syntax, and fully silent failure behavior.
 Implementation tests must cover cross-rule reintroduction across all matcher-type
 combinations that are practical to construct.
 
