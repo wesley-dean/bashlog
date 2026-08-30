@@ -101,6 +101,7 @@ bashlog_log() {
   local status
   local tag
   local index
+  local tag_count=0
   local -a tags=()
 
   if (( $# < 2 )); then
@@ -142,7 +143,8 @@ bashlog_log() {
         if (( $# < 2 )) || ! __bashlog_tag_valid "$2"; then
           return 64
         fi
-        tags+=("$2")
+        tags[tag_count]=$2
+        ((tag_count += 1))
         shift 2
         ;;
       --)
@@ -187,7 +189,7 @@ bashlog_log() {
     fi
     message=${__bashlog_redacted_result}
 
-    for ((index = 0; index < ${#tags[@]}; index++)); do
+    for ((index = 0; index < tag_count; index++)); do
       tag=${tags[index]}
       if ! __bashlog_redact_context "${context_index}" "${tag}"; then
         __bashlog_emit_suppression_diagnostic "${context_index}"
@@ -197,15 +199,27 @@ bashlog_log() {
     done
   fi
 
-  if ! __bashlog_render_record \
-    "${level}" \
-    "${timestamp}" \
-    "${message}" \
-    "${tags[@]}"; then
-    if (( context_seen )); then
-      __bashlog_emit_suppression_diagnostic "${context_index}"
+  if (( tag_count > 0 )); then
+    if ! __bashlog_render_record \
+      "${level}" \
+      "${timestamp}" \
+      "${message}" \
+      "${tags[@]}"; then
+      if (( context_seen )); then
+        __bashlog_emit_suppression_diagnostic "${context_index}"
+      fi
+      return 70
     fi
-    return 70
+  else
+    if ! __bashlog_render_record \
+      "${level}" \
+      "${timestamp}" \
+      "${message}"; then
+      if (( context_seen )); then
+        __bashlog_emit_suppression_diagnostic "${context_index}"
+      fi
+      return 70
+    fi
   fi
   candidate=${__bashlog_render_result}
 
