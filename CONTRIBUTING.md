@@ -7,9 +7,13 @@ that posture rather than treating the repository as a generic Bash utility.
 Before making a consequential change, please read:
 
 - `README.md` for the project contract and current behavior;
+- `doc/engineering-philosophy.md` for the reusable design posture behind the
+  project;
 - `AGENTS.md` for the contributor-oriented repository map;
 - `doc/decisions.md` and the governing ADRs under `doc/adr/`;
 - `doc/bashlog-spec.md` before changing observable public behavior;
+- `doc/threat-model.md` before changing trust boundaries, sensitive-data flow,
+  dependencies, output sinks, or other security-relevant behavior;
 - `doc/documentation-standard.md` before editing maintained Bash comments;
 - `doc/testing.md` before changing the behavior contract; and
 - `doc/release-verification.md` before changing release behavior.
@@ -19,6 +23,9 @@ Before making a consequential change, please read:
 Prefer focused changes with a clear contract.  Consequential architectural work
 should update or add an ADR.  Observable public behavior changes should keep the
 specification, Doxygen contracts, tests, README, and implementation consistent.
+
+The engineering philosophy is guidance rather than a replacement for governing
+ADRs.  When a concrete Accepted decision exists, the ADR remains authoritative.
 
 The canonical validation surfaces are:
 
@@ -37,10 +44,15 @@ Public API additions are compatibility commitments.  Please avoid exposing an
 internal helper merely because doing so would make one implementation task more
 convenient.
 
-Security-sensitive changes deserve negative tests as well as positive ones.  For
-example, a redaction test should prove that protected input does not appear in any
-bashlog-controlled observable output, not only that the expected replacement is
-present.
+Security-sensitive changes deserve explicit threat-model review and negative tests
+as well as positive ones.  For example, a redaction test should prove that
+protected input does not appear in any bashlog-controlled observable output, not
+only that the expected replacement is present.
+
+Every new dependency should be treated as an expansion of the trusted computing
+base.  Pinning and checksum verification establish acquisition integrity, not a
+proof that the dependency is behaviorally safe or appropriately trusted with the
+data and authority bashlog would provide it.
 
 ## Reporting Problems
 
