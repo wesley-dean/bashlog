@@ -42,11 +42,22 @@ status as part of the consequential change that depends on it.
 
 - `src/`: starter-derived entrypoint/orchestration that has not yet been replaced
   by bashlog's sourceable-library implementation.
-- `lib/`: maintained reusable implementation modules.
+- `lib/level.bash`: non-runtime interface scaffold containing the exact Doxygen
+  contracts for level get/set; not yet assembled by the Makefile.
+- `lib/logging.bash`: non-runtime interface scaffold containing the exact Doxygen
+  contracts for the generic logger and canonical severity helpers; not yet
+  assembled by the Makefile.
+- `lib/redaction.bash`: non-runtime interface scaffold containing the exact
+  Doxygen contracts for redaction registration, context destruction, and
+  transform-only redaction; not yet assembled by the Makefile.
 - `lib/plugins/`: starter-derived additive-module layout; ADR-016 proposes
   retaining deterministic modular assembly while removing runtime plugin-registry
   semantics.
-- `tests/`: Bats behavior tests and Bash compatibility helpers.
+- `tests/`: currently active starter-derived Bats behavior tests and compatibility
+  helpers.
+- `tests/contract/`: dormant red-phase bashlog behavior/security tests written
+  before implementation; these are intentionally outside the current
+  `tests/*.bats` wildcard.
 - `doc/bashlog-spec.md`: Draft normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
 - `doc/adr/`: architectural decision records and their full reasoning.
@@ -56,8 +67,9 @@ status as part of the consequential change that depends on it.
 - `test-results/`: generated JUnit reports.
 
 The repository still contains implementation scaffolding inherited from
-`template-bash`.  Documentation of intended bashlog behavior must not be mistaken
-for evidence that the starter runtime already implements that behavior.
+`template-bash`.  Documentation of intended bashlog behavior, Doxygen interface
+scaffolds, and dormant contract tests must not be mistaken for evidence that the
+starter runtime already implements that behavior.
 
 ## Build and Dependency Boundaries
 
@@ -78,6 +90,12 @@ See ADR-006 and ADR-012 for the release-artifact and checksum-companion contract
 The current Makefile still uses the starter project name and starter source
 assembly.  The intended first-release bashlog artifacts described in the README
 and specification remain planned behavior until implementation updates the build.
+
+The Doxygen interface scaffold files under `lib/` are intentionally not listed in
+the current `SOURCE_FILES`.  Do not add them to the build merely to make the
+public functions appear to exist; the implementation phase should activate them
+only when their placeholder bodies are replaced by behavior that satisfies the
+contract tests.
 
 ## Source and Module Architecture
 
@@ -131,8 +149,8 @@ Important proposed public semantics include:
 - Timestamps, colors, tags, automatic environment metadata, file-descriptor
   selection, syslog, network sinks, and `bashlog_die` are intentionally outside
   the initial public contract.
-- Shared public return statuses are documented in `doc/bashlog-spec.md` and must
-  be reflected exactly in Doxygen blocks and tests.
+- Shared public return statuses are documented in `doc/bashlog-spec.md` and are
+  reflected in the Doxygen scaffolds and dormant contract tests.
 
 Do not expand this public surface during implementation merely because a helper is
 convenient to expose.  New public functions are compatibility commitments and
@@ -164,6 +182,12 @@ the `.dev.bash` artifact intentionally retains the maintenance narrative.
 Security-sensitive helpers require substantive documentation even when they are
 internal.  Explain quoting assumptions, matcher semantics, ordering, failure
 behavior, and security boundaries that a reviewer would otherwise need to infer.
+
+The exact public-function documentation is now drafted in `lib/level.bash`,
+`lib/logging.bash`, and `lib/redaction.bash`.  These blocks are intended to remain
+beside the implementation and should be corrected before implementation whenever
+the public contract changes.  Do not rewrite them after the fact merely to make
+comments agree with code that drifted from the specification.
 
 Public-function Doxygen documentation must agree with `doc/bashlog-spec.md` on
 arguments, outputs, statuses, and failure behavior.  A disagreement is a defect to
@@ -208,9 +232,15 @@ bashlog: message suppressed
 When an active rule set is available, that diagnostic must itself pass final
 verification or remain silent.
 
+The dormant `tests/contract/redaction-security.bats` suite includes explicit
+negative disclosure assertions and cross-rule cases where later literal
+replacements recreate text protected by earlier fixed, glob, or ERE rules.
+Implementation is not complete merely because substitutions appear correct; the
+final output invariant must survive those cases.
+
 The project explicitly rejects vague trust claims and security through obscurity.
-Read ADR-018 through ADR-024, ADR-019, and the Draft specification before
-implementing the security-critical output path.
+Read ADR-018 through ADR-024, ADR-019, the Draft specification, and the redaction
+contract tests before implementing the security-critical output path.
 
 ## Validation
 
@@ -222,26 +252,39 @@ Use the smallest relevant set first, then the full project contract:
 - `make docs`
 - `make deps-check`
 
+`make check` currently validates only the starter `SOURCE_FILES` because the
+bashlog interface scaffolds have not yet been activated in the build.  The
+implementation phase must add the real maintained bashlog modules to source
+validation when it replaces the starter source list.
+
 `make check` performs Bash syntax validation and ShellCheck against maintained
 Bash files.  `make format` uses the same shfmt arguments as MegaLinter:
 `-i 2 -bn -ci -sr -kp`.
 
-Behavior tests must exercise every shipped artifact flavor.  Generated release
-artifacts are public products and must not depend on `vendor/` at runtime.  Every
-current executable artifact must have a valid adjacent `.sha256` checksum
-companion, and a successful build must not retain a stale `.256` companion for
-the same artifact.
+The active top-level Bats suite is still starter-derived.  The bashlog contract
+suite under `tests/contract/` is intentionally dormant and is not expected to pass
+against the current starter artifact.  Do not weaken those tests to make the
+starter green.  Activate them when the runtime implementation begins.
 
-Security-sensitive behavior should use negative tests as well as positive tests.
+Once activated, behavior tests must exercise every shipped artifact flavor.
+Generated release artifacts are public products and must not depend on `vendor/`
+at runtime.  Every current executable artifact must have a valid adjacent
+`.sha256` checksum companion, and a successful build must not retain a stale
+`.256` companion for the same artifact.
+
+Security-sensitive behavior must use negative tests as well as positive tests.
 For redaction, tests should verify not only that the expected replacement is
 present but also that protected originals do not appear in stdout, stderr,
 failure diagnostics, or other observable bashlog sink output.  Cross-rule tests
-should include cases where later replacements reintroduce text protected by
-earlier fixed, glob, or ERE rules and verify fail-closed suppression.
+must include cases where later replacements reintroduce text protected by earlier
+fixed, glob, or ERE rules and verify fail-closed suppression.
 
-The Draft specification contains a concrete list of required test implications.
-Treat that list as the starting behavior matrix for the next implementation
-phase rather than inventing test semantics from source code.
+`tests/contract/compat-bash43.bash` defines the representative Bash 4.3 smoke
+contract that should replace the starter compatibility script during
+implementation.
+
+See `doc/testing.md` and `tests/contract/README.md` for the complete activation
+model.
 
 ## Scope Discipline
 
