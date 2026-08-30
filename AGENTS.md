@@ -3,25 +3,33 @@
 This file is the concise operational map for contributors and AI-assisted tools.
 It is intentionally smaller than the project's ADR corpus.  Architectural
 reasoning belongs in `doc/adr/`; concise decision summaries belong in
-`doc/decisions.md`; current observable behavior belongs in a project
-specification when one exists; implementation-level contracts and rationale
-belong beside the code in Doxygen comments.
+`doc/decisions.md`; normative public behavior belongs in `doc/bashlog-spec.md`;
+implementation-level contracts and rationale belong beside the code in Doxygen
+comments.
 
 ## Start Here
 
 Before consequential work:
 
-1. Read `README.md` for the project overview and lifecycle.
+1. Read `README.md` for the public project contract and current project status.
 2. Read `doc/decisions.md` for the concise architectural map and decision status.
 3. Read the full ADRs governing the area you intend to change; use
    `doc/adr/README.md` as the index.
-4. Read `doc/documentation-standard.md` before editing Bash source comments.
-5. Read `doc/testing.md` before changing tests or generated artifacts.
-6. Read `doc/release-verification.md` before changing release behavior.
+4. Read `doc/bashlog-spec.md` before changing public behavior or implementing the
+   proposed API.  The specification is currently Draft while ADR-013 through
+   ADR-024 remain Proposed.
+5. Read `doc/documentation-standard.md` before editing Bash source comments.
+6. Read `doc/testing.md` before changing tests or generated artifacts.
+7. Read `doc/release-verification.md` before changing release behavior.
 
 `doc/decisions.md` is a discovery aid, not a replacement for the governing ADR.
 When reasoning, rejected alternatives, security boundaries, or consequences
 matter, read the full record.
+
+`doc/bashlog-spec.md` defines the proposed observable contract.  It does not
+supersede a governing ADR.  When the specification and an ADR conflict, surface
+the conflict and correct the documents before implementation rather than choosing
+whichever text is more convenient.
 
 When repository evidence and an ADR conflict, surface the conflict.  Do not
 silently treat the implementation as the architectural source of truth.
@@ -32,18 +40,24 @@ status as part of the consequential change that depends on it.
 
 ## Repository Shape
 
-- `src/`: entrypoint and product-facing orchestration inherited from the starter;
-  bashlog's sourceable-library entry behavior is being defined by project ADRs.
+- `src/`: starter-derived entrypoint/orchestration that has not yet been replaced
+  by bashlog's sourceable-library implementation.
 - `lib/`: maintained reusable implementation modules.
-- `lib/plugins/`: automatically discovered additive modules under the current
-  starter architecture; ADR-016 proposes specializing this model for bashlog.
+- `lib/plugins/`: starter-derived additive-module layout; ADR-016 proposes
+  retaining deterministic modular assembly while removing runtime plugin-registry
+  semantics.
 - `tests/`: Bats behavior tests and Bash compatibility helpers.
+- `doc/bashlog-spec.md`: Draft normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
 - `doc/adr/`: architectural decision records and their full reasoning.
 - `doc/reference/`: generated Doxygen output; never commit it.
 - `vendor/`: generated dependency state managed by bashdeps; never commit it.
 - `dist/`: generated release artifacts; never edit them directly.
 - `test-results/`: generated JUnit reports.
+
+The repository still contains implementation scaffolding inherited from
+`template-bash`.  Documentation of intended bashlog behavior must not be mistaken
+for evidence that the starter runtime already implements that behavior.
 
 ## Build and Dependency Boundaries
 
@@ -61,6 +75,10 @@ status as part of the consequential change that depends on it.
 See ADR-003 and ADR-005 for the governing dependency and orchestration decisions.
 See ADR-006 and ADR-012 for the release-artifact and checksum-companion contract.
 
+The current Makefile still uses the starter project name and starter source
+assembly.  The intended first-release bashlog artifacts described in the README
+and specification remain planned behavior until implementation updates the build.
+
 ## Source and Module Architecture
 
 The inherited starter currently assembles a release artifact from an explicit
@@ -74,6 +92,51 @@ shape from intended bashlog architecture.  Do not introduce additional runtime
 plugin-registry dependencies merely because the scaffold currently contains one.
 
 See ADR-004 and proposed ADR-016.
+
+## Public API Direction
+
+The Draft specification proposes this initial public surface:
+
+```text
+bashlog_level_get
+bashlog_level_set
+
+bashlog_log
+bashlog_debug
+bashlog_info
+bashlog_notice
+bashlog_warning
+bashlog_error
+bashlog_critical
+bashlog_alert
+bashlog_emergency
+
+bashlog_redaction_add
+bashlog_redaction_context_destroy
+bashlog_redact
+```
+
+Important proposed public semantics include:
+
+- Bash 4.3 remains the minimum runtime.
+- The default logging threshold is `info`.
+- Canonical severity names are full names rather than short aliases.
+- All routine logging is written to standard error; standard output remains an
+  application data channel.
+- `bashlog_redact` is a transform-only API that writes successful output to
+  standard output without adding a newline.
+- Logging calls select redaction explicitly with `--context CONTEXT`; there is no
+  ambient current context.
+- The initial renderer is `LEVEL: MESSAGE` with lowercase canonical severity.
+- Timestamps, colors, tags, automatic environment metadata, file-descriptor
+  selection, syslog, network sinks, and `bashlog_die` are intentionally outside
+  the initial public contract.
+- Shared public return statuses are documented in `doc/bashlog-spec.md` and must
+  be reflected exactly in Doxygen blocks and tests.
+
+Do not expand this public surface during implementation merely because a helper is
+convenient to expose.  New public functions are compatibility commitments and
+must be documented deliberately.
 
 ## Documentation Standard
 
@@ -102,7 +165,12 @@ Security-sensitive helpers require substantive documentation even when they are
 internal.  Explain quoting assumptions, matcher semantics, ordering, failure
 behavior, and security boundaries that a reviewer would otherwise need to infer.
 
-See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
+Public-function Doxygen documentation must agree with `doc/bashlog-spec.md` on
+arguments, outputs, statuses, and failure behavior.  A disagreement is a defect to
+investigate, not an instruction to rewrite whichever document is easiest.
+
+See ADR-007, ADR-008, ADR-019, `doc/documentation-standard.md`, and
+`doc/bashlog-spec.md`.
 
 ## Security-Sensitive Work
 
@@ -131,9 +199,18 @@ The proposed redaction model includes the following review-critical properties:
 - and redaction failure diagnostics use a bounded path that never reproduces the
   failed candidate or protected rule content.
 
+The Draft specification further fixes the public failure diagnostic candidate as:
+
+```text
+bashlog: message suppressed
+```
+
+When an active rule set is available, that diagnostic must itself pass final
+verification or remain silent.
+
 The project explicitly rejects vague trust claims and security through obscurity.
-Read ADR-018 through ADR-024 and the auditability ADR before implementing the
-security-critical output path.
+Read ADR-018 through ADR-024, ADR-019, and the Draft specification before
+implementing the security-critical output path.
 
 ## Validation
 
@@ -162,6 +239,10 @@ failure diagnostics, or other observable bashlog sink output.  Cross-rule tests
 should include cases where later replacements reintroduce text protected by
 earlier fixed, glob, or ERE rules and verify fail-closed suppression.
 
+The Draft specification contains a concrete list of required test implications.
+Treat that list as the starting behavior matrix for the next implementation
+phase rather than inventing test semantics from source code.
+
 ## Scope Discipline
 
 Prefer the smallest coherent change that satisfies the governing decision.  Do
@@ -170,5 +251,7 @@ ideas separately rather than expanding scope without acknowledgment.
 
 When changing architecture, update or add an ADR before or with the
 implementation.  Update `doc/decisions.md` when the operative decision changes.
-After implementation, compare the result back against the same ADR constraints
-to catch locally-correct architectural drift.
+When changing observable public behavior, update `doc/bashlog-spec.md` before or
+with the implementation and corresponding Doxygen/tests.  After implementation,
+compare the result back against the same ADR constraints to catch locally-correct
+architectural drift.
