@@ -3,14 +3,18 @@
 setup() {
   bats_require_minimum_version 1.5.0
   : "${BASHLOG_ARTIFACT:?BASHLOG_ARTIFACT must identify the artifact under test}"
+
+  HUMAN_ARTIFACT="${BATS_TEST_TMPDIR}/bashlog-human.bash"
+  printf 'source %q\nbashlog_format_set human\nbashlog_color_set never\n' \
+    "${BASHLOG_ARTIFACT}" >"${HUMAN_ARTIFACT}"
 }
 
 run_bashlog_script() {
-  run --separate-stderr bash --noprofile --norc -s -- "${BASHLOG_ARTIFACT}" "$@"
+  run --separate-stderr bash --noprofile --norc -s -- "${HUMAN_ARTIFACT}" "$@"
 }
 
 run_bashlog_script_absolute() {
-  run --separate-stderr /bin/bash --noprofile --norc -s -- "${BASHLOG_ARTIFACT}" "$@"
+  run --separate-stderr /bin/bash --noprofile --norc -s -- "${HUMAN_ARTIFACT}" "$@"
 }
 
 @test "successful protected logging emits replacement and never original fixed secret" {
@@ -54,16 +58,17 @@ BASH
   [ "${stderr}" = $'emergency: [R]\nalert: [R]\ncritical: [R]\nerror: [R]\nwarning: [R]\nnotice: [R]\ninfo: [R]\ndebug: [R]' ]
 }
 
-@test "redaction covers the complete rendered record including severity label" {
+@test "library-generated severity is not transformed by primary redaction" {
   run_bashlog_script <<'BASH'
     source "$1"
     bashlog_redaction_add ctx fixed info '[LEVEL]' || exit
     bashlog_info --context ctx 'message'
 BASH
 
-  [ "${status}" -eq 0 ]
+  [ "${status}" -eq 70 ]
   [ -z "${output}" ]
-  [ "${stderr}" = '[LEVEL]: message' ]
+  [ "${stderr}" = 'bashlog: message suppressed' ]
+  [[ "${stderr}" != *'[LEVEL]'* ]]
 }
 
 @test "later replacement reintroducing earlier fixed match fails closed" {
