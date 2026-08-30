@@ -1,34 +1,47 @@
 # AGENTS.md
 
 This file is the concise operational map for contributors and AI-assisted tools.
-It is intentionally smaller than the project's ADR corpus.  Architectural
-reasoning belongs in `doc/adr/`; concise decision summaries belong in
-`doc/decisions.md`; normative public behavior belongs in `doc/bashlog-spec.md`;
-implementation-level contracts and rationale belong beside the code in exact
-`bash-doxygen`-compatible Doxygen comments.
+It is intentionally smaller than the project's ADR corpus.  Reusable engineering
+posture belongs in `doc/engineering-philosophy.md`; architectural reasoning
+belongs in `doc/adr/`; concise decision summaries belong in `doc/decisions.md`;
+normative public behavior belongs in `doc/bashlog-spec.md`; explicit security
+analysis belongs in `doc/threat-model.md`; implementation-level contracts and
+rationale belong beside the code in exact `bash-doxygen`-compatible Doxygen
+comments.
 
 ## Start Here
 
 Before consequential work:
 
 1. Read `README.md` for the public project contract and current project status.
-2. Read `doc/decisions.md` for the concise architectural map.
-3. Read the full ADRs governing the area you intend to change; use
+2. Read `doc/engineering-philosophy.md` for the reusable engineering posture that
+   informs areas not already governed by a more specific Accepted ADR.
+3. Read `doc/decisions.md` for the concise architectural map.
+4. Read the full ADRs governing the area you intend to change; use
    `doc/adr/README.md` as the index.
-4. Read `doc/bashlog-spec.md` before changing public behavior.  The specification
+5. Read `doc/bashlog-spec.md` before changing public behavior.  The specification
    is the Accepted normative public contract.
-5. Read `doc/documentation-standard.md` before editing Bash source comments.
-6. Read `doc/testing.md` before changing tests or generated artifacts.
-7. Read `doc/release-verification.md` before changing release behavior.
+6. Read `doc/threat-model.md` before changing dependencies, sensitive-data flow,
+   output sinks, trust boundaries, matcher behavior, redaction semantics, or other
+   security-relevant behavior.
+7. Read `doc/documentation-standard.md` before editing Bash source comments.
+8. Read `doc/testing.md` before changing tests or generated artifacts.
+9. Read `doc/release-verification.md` before changing release behavior.
 
-`doc/decisions.md` is a discovery aid, not a replacement for the governing ADR.
-When reasoning, rejected alternatives, security boundaries, or consequences
-matter, read the full record.
+`doc/engineering-philosophy.md` is guidance rather than a replacement for a
+governing ADR.  `doc/decisions.md` is a discovery aid, not a replacement for the
+governing ADR.  When reasoning, rejected alternatives, security boundaries, or
+consequences matter, read the full record.
 
 `doc/bashlog-spec.md` defines observable public behavior.  It does not supersede
 a governing ADR.  When the specification, implementation, tests, and an Accepted
 ADR disagree, surface the conflict and correct the appropriate source rather than
 silently choosing whichever artifact is easiest to change.
+
+`doc/threat-model.md` consolidates the project's current security objectives,
+assets, trusted computing base, trust boundaries, threats, mitigations, evidence,
+residual risks, and review triggers.  It does not replace the security decisions
+recorded in ADRs or the public contract defined by the specification.
 
 ## Repository Shape
 
@@ -45,9 +58,13 @@ silently choosing whichever artifact is easiest to change.
 - `tests/contract/`: active Bats public behavior and security contract.
 - `tests/contract/compat-bash43.bash`: representative Bash 4.3 compatibility
   contract executed against every generated artifact.
+- `doc/engineering-philosophy.md`: reusable engineering posture and design
+  principles.
 - `doc/bashlog-spec.md`: Accepted normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
 - `doc/adr/`: Accepted architectural decision records and their full reasoning.
+- `doc/threat-model.md`: maintained threat model and Mermaid trust-boundary/data-
+  flow diagram.
 - `doc/reference/`: generated Doxygen output; never commit it.
 - `vendor/`: generated dependency state managed by bashdeps; never commit it.
 - `dist/`: generated release artifacts; never edit them directly.
@@ -75,6 +92,12 @@ not as a command dispatcher.
 
 bashdeps manages repository dependencies such as scripts, filters, and assets.  It
 does not install system tools or operating-system packages.
+
+Every dependency expands the trusted computing base.  Pinning and checksum
+verification establish expected acquisition bytes; they do not prove behavioral
+safety or justify the authority and data a dependency receives.  Dependency
+changes should be reviewed against `doc/threat-model.md`, including runtime,
+build, CI, documentation, and release tooling according to their authority.
 
 The maintained source order is explicit:
 
@@ -222,7 +245,10 @@ See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
 ADR-018 governs the overarching redaction security boundary.  ADR-020 through
 ADR-024 govern context lifecycle, rule registration, matcher semantics, and the
 final fail-closed output boundary.  ADR-026 defines the semantic-data-before-
-presentation ordering for logger-managed redaction.
+presentation ordering for logger-managed redaction.  `doc/threat-model.md`
+consolidates those decisions with the project's broader assets, trust boundaries,
+dependency and supply-chain considerations, downstream rendering risks, and
+residual non-promises.
 
 Review-critical properties include:
 
@@ -251,6 +277,10 @@ Review-critical properties include:
 - no public operation returns secret-bearing registered rules;
 - context destruction is not secure memory erasure;
 - caller-side xtrace can expose expanded arguments before bashlog gains control.
+
+Changes that add dependencies, alter data-egress behavior, expand output sinks,
+change sensitive-data interpretation, or move trust boundaries should revisit the
+threat model even when the redaction algorithms themselves are unchanged.
 
 ### Presentation Boundary
 
