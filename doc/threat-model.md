@@ -80,6 +80,54 @@ privileges/data they receive.
 
 ## Trust Boundaries
 
+The diagram below is intentionally architectural rather than implementation-level.
+It shows where data or authority changes ownership and where bashlog's documented
+security guarantees begin and end.
+
+```mermaid
+flowchart LR
+    caller[Caller / application]
+    untrusted[Untrusted or sensitive data]
+    context[Developer-defined redaction context]
+
+    subgraph runtime[bashlog runtime trust boundary]
+        parse[Options + printf-style message construction]
+        redact[Selected-context redaction]
+        render[Human or logfmt renderer]
+        verify[Final verification]
+    end
+
+    stderr[stderr]
+    downstream[Terminal / file / service manager / container / collector]
+
+    caller --> parse
+    untrusted --> parse
+    context --> redact
+    parse --> redact
+    redact --> render
+    render --> verify
+    verify --> stderr
+    stderr --> downstream
+
+    subgraph supply[Build and supply-chain boundary]
+        source[Maintained source]
+        deps[Build / test / documentation dependencies]
+        build[Build + validation + release tooling]
+        artifacts[Generated bashlog artifacts]
+    end
+
+    source --> build
+    deps --> build
+    build --> artifacts
+    artifacts --> runtime
+```
+
+The important boundary is not merely the box labeled `bashlog`.  A redaction
+context becomes security-relevant only when the caller explicitly selects it, and
+bashlog's confidentiality guarantee ends when verified bytes are emitted to
+stderr.  Downstream storage, transport, parsing, display, retention, and access
+control belong to the consuming environment.
+
 ### Caller to bashlog
 
 Caller-supplied format strings, arguments, tags, context names, matcher patterns,
@@ -333,7 +381,7 @@ attack surface and must be reviewed according to its authority and data exposure
 
 ### T11: Generated artifact differs from maintained-source behavior
 
-**Threat:** concatenation, comment stripping, or minification introduces a semantic
+**Threat:** Concatenation, comment stripping, or minification introduces a semantic
 change that bypasses a security property.
 
 **Mitigations:**
