@@ -11,18 +11,16 @@ This document defines the intended observable public behavior of bashlog.
 Architecture Decision Records under `doc/adr/` explain why consequential design
 choices exist.  This specification translates those choices into a concrete
 public contract: function names, argument ordering, outputs, return statuses,
-level semantics, redaction-context selection, and failure behavior.
+severity semantics, presentation modes, redaction-context selection, and failure
+behavior.
 
 The specification is intentionally precise.  A caller should not have to inspect
 implementation details to determine what a public function means, and an
 implementer should not have to invent public semantics while writing code.
 
 This specification is **Accepted** as the normative public contract for the first
-functional release.  Acceptance records the observable behavior that
-implementation and tests must satisfy; it does not claim that the current
-starter-derived runtime already implements that behavior.  Runtime conformance
-must be demonstrated by the implementation and tests before the project describes
-the contract as implemented behavior.
+functional release.  Runtime conformance must still be demonstrated by tests
+against the artifacts intended for publication.
 
 ## Normative Language
 
@@ -39,7 +37,8 @@ bashlog targets Bash 4.3 or newer.
 
 Normal runtime operation uses Bash language facilities and builtins only.  The
 library does not invoke external commands for loading, level handling, message
-formatting, redaction, rendering, verification, or emission.
+formatting, timestamp acquisition, redaction, rendering, verification, or
+emission.
 
 Development, build, test, documentation, and release tooling are outside this
 consumer runtime boundary.
@@ -63,6 +62,7 @@ Sourcing bashlog MUST NOT:
 - invoke external commands;
 - inspect Git state;
 - discover application configuration from files;
+- infer container, init-system, or logging infrastructure;
 - or assume application error-handling or exit policy.
 
 The implementation may create clearly namespaced Bash variables and functions.
@@ -71,11 +71,18 @@ private or access-controlled by Bash.
 
 ## Public API Overview
 
-The initial public API is deliberately narrow:
+The public API is:
 
 ```text
 bashlog_level_get
 bashlog_level_set
+
+bashlog_format_get
+bashlog_format_set
+bashlog_timestamp_get
+bashlog_timestamp_set
+bashlog_color_get
+bashlog_color_set
 
 bashlog_log
 bashlog_debug
@@ -93,7 +100,7 @@ bashlog_redact
 ```
 
 No other function participates in the stable public contract merely because it
-exists in the generated artifact.
+exists in a generated artifact.
 
 The first stable release SHOULD treat documented `bashlog_*` functions as
 semantic-version compatibility surface.  `__bashlog_*` functions and variables
@@ -101,17 +108,17 @@ MUST NOT be treated as stable interfaces.
 
 ## Return Statuses
 
-The initial API uses a small, shared status vocabulary.  The values intentionally
-follow familiar `sysexits` numeric conventions where that improves recognition,
-but bashlog does not depend on a system `sysexits.h` file or external utility.
+The API uses a small shared status vocabulary.  The values intentionally follow
+familiar `sysexits` numeric conventions where that improves recognition, but
+bashlog does not depend on a system `sysexits.h` file or external utility.
 
 | Status | Meaning |
 | ---: | --- |
 | `0` | The requested operation succeeded.  For logging calls, this also includes intentional suppression by the configured level threshold. |
-| `64` | The caller supplied invalid arguments, an invalid level, an invalid context identifier, an unknown option, or otherwise invalid API syntax. |
+| `64` | The caller supplied invalid arguments, an invalid level, an invalid tag, an invalid context identifier, an unknown option, an invalid presentation mode, or otherwise invalid API syntax. |
 | `65` | A proposed redaction rule is invalid, duplicate, unsatisfiable, or cannot be accepted under its matcher contract. |
 | `69` | A specifically requested redaction context is unavailable because it is unknown or destroyed. |
-| `70` | Redaction, final verification, or another internal security-sensitive transformation could not be completed safely. |
+| `70` | Redaction, final verification, timestamp acquisition, rendering, or another internal transformation could not be completed safely. |
 | `74` | A final logging emission to standard error failed. |
 
 Public functions MUST NOT use a non-zero status merely because a message was
@@ -140,21 +147,9 @@ ordering:
 
 The public contract uses the full canonical names above.  Short aliases such as
 `warn`, `err`, `crit`, `emerg`, `panic`, `fatal`, `success`, and `dbg` are not part
-of the initial namespaced API.
+of the namespaced API.
 
-Applications MAY define their own wrappers.  For example:
-
-```bash
-warn() {
-  bashlog_warning "$@"
-}
-
-error() {
-  bashlog_error "$@"
-}
-```
-
-Those generic names remain application-owned.
+Applications MAY define their own wrappers.
 
 ### Threshold Semantics
 
@@ -174,14 +169,19 @@ warning, notice, and info messages while suppressing debug messages.
 A threshold of `0` permits only emergency messages.  A threshold of `7` permits
 all defined severities.
 
-Threshold suppression occurs before `printf`-style message construction.  This
-avoids unnecessary creation and copying of a message that will not cross a
-bashlog sink.
+Threshold suppression occurs before `printf`-style message construction and
+before timestamp acquisition.  This avoids unnecessary creation and copying of a
+message or metadata that will not cross a bashlog sink.
 
-Syntax and explicitly requested context validity are still caller contract.  A
-logging call with invalid API syntax or an explicitly requested unavailable
-redaction context MUST NOT silently become successful merely because its severity
-would otherwise be suppressed.
+Logging option syntax, tags, and an explicitly requested context remain caller
+contract.  Invalid syntax, an invalid tag, or an unavailable requested context
+MUST NOT silently become successful merely because the severity would otherwise
+be suppressed.
+
+Severity is semantic state used for filtering.  The textual severity token is a
+separate presentation concern, but both supported renderers preserve the
+canonical severity so classification remains durable after the record leaves
+bashlog.
 
 ## `bashlog_level_get`
 
@@ -196,18 +196,10 @@ bashlog_level_get
 Writes the active canonical severity name to standard output followed by one
 newline.
 
-Example output:
-
-```text
-info
-```
-
 ### Return Status
 
 - `0`: level written successfully.
-
-The function takes no arguments.  Supplying arguments returns `64` and writes no
-level value to standard output.
+- `64`: arguments were supplied.
 
 ## `bashlog_level_set`
 
@@ -217,68 +209,236 @@ level value to standard output.
 bashlog_level_set LEVEL
 ```
 
-### Accepted Level Values
+`LEVEL` may be a canonical severity name or the corresponding integer `0` through
+`7`.  Names are case-sensitive.  Aliases are not accepted.
 
-`LEVEL` may be either:
-
-- a canonical severity name: `emergency`, `alert`, `critical`, `error`,
-  `warning`, `notice`, `info`, or `debug`; or
-- the corresponding integer `0` through `7`.
-
-Names are case-sensitive in the initial API.  Aliases are not accepted.
-
-### Behavior
-
-On success, the active threshold changes for subsequent logging calls in the
-current Bash process.  The function produces no standard output or standard
-error output.
-
-On failure, the previous threshold remains unchanged.
+On success, the threshold changes for subsequent logging calls in the current
+Bash process and the function produces no output.  On failure, the previous
+threshold remains unchanged.
 
 ### Return Status
 
 - `0`: threshold changed.
 - `64`: missing, extra, or invalid level argument.
 
+## Presentation Configuration
+
+bashlog has three independent presentation controls:
+
+```text
+format=auto
+timestamp=off
+color=auto
+```
+
+Those are the defaults after sourcing.
+
+All presentation setters validate atomically.  Invalid input returns `64`, emits
+no routine output, and leaves the previous setting unchanged.
+
+### `bashlog_format_get` and `bashlog_format_set`
+
+```text
+bashlog_format_get
+bashlog_format_set MODE
+```
+
+`MODE` MUST be exactly one of:
+
+```text
+auto
+human
+logfmt
+```
+
+`bashlog_format_get` writes the configured mode followed by one newline.  It does
+not resolve `auto` into the renderer that would be selected for the current file
+descriptor state.
+
+`auto` means exactly:
+
+```text
+stderr is a TTY      -> human
+stderr is not a TTY  -> logfmt
+```
+
+The decision is made for each eligible logging operation using Bash
+`[[ -t 2 ]]`.  bashlog does not inspect systemd, journald, Docker, Podman,
+Kubernetes, Swarm, OpenRC, cgroups, process ancestry, operating-system identity,
+or environment markers to choose a renderer.
+
+`human` always selects the human renderer.  `logfmt` always selects the logfmt
+renderer.
+
+### `bashlog_timestamp_get` and `bashlog_timestamp_set`
+
+```text
+bashlog_timestamp_get
+bashlog_timestamp_set MODE
+```
+
+`MODE` MUST be exactly one of:
+
+```text
+off
+utc
+local
+```
+
+The default is `off`.
+
+`utc` generates a Bash-native current-time value with second precision:
+
+```text
+YYYY-MM-DDTHH:MM:SSZ
+```
+
+`local` generates a Bash-native local-time value with second precision and a
+numeric UTC offset:
+
+```text
+YYYY-MM-DDTHH:MM:SS+HHMM
+```
+
+Timestamp generation MUST use Bash builtin time formatting and MUST NOT invoke
+external `date` or another helper.  UTC generation may use function-local
+exported `TZ` state; caller-visible timezone value and export state MUST be
+preserved after the call.
+
+Timestamp acquisition occurs only after syntax, explicitly requested context,
+tag, and threshold validation establish that the record is eligible for message
+construction and rendering.
+
+The contract does not include fractional seconds.
+
+### `bashlog_color_get` and `bashlog_color_set`
+
+```text
+bashlog_color_get
+bashlog_color_set MODE
+```
+
+`MODE` MUST be exactly one of:
+
+```text
+never
+auto
+always
+```
+
+The default is `auto`.
+
+Color is a property of the human renderer only:
+
+- `never` emits no bashlog-owned ANSI SGR sequences;
+- `auto` uses color only when standard error is a TTY according to `[[ -t 2 ]]`;
+- `always` uses color whenever the human renderer is selected.
+
+The logfmt renderer NEVER emits bashlog-owned ANSI sequences, even when the color
+mode is `always`.
+
+The initial severity palette colors only the canonical severity token:
+
+| Severity | SGR | Meaning |
+| --- | --- | --- |
+| `emergency` | `1;31` | bold red |
+| `alert` | `1;31` | bold red |
+| `critical` | `31` | red |
+| `error` | `31` | red |
+| `warning` | `33` | yellow |
+| `notice` | `36` | cyan |
+| `info` | `32` | green |
+| `debug` | `2` | dim |
+
+The reset sequence immediately follows the severity token so tags and message
+text are not accidentally colorized by bashlog.
+
 ## Logging Call Syntax
 
-The generic logger and every severity helper use the same message-call shape.
+The generic logger and every severity helper use the same option and message
+shape.
 
 ### Generic Logger
 
 ```text
-bashlog_log LEVEL [--context CONTEXT] [--] FORMAT [ARGUMENT ...]
+bashlog_log LEVEL [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
 ### Severity Helpers
 
 ```text
-bashlog_info [--context CONTEXT] [--] FORMAT [ARGUMENT ...]
-bashlog_warning [--context CONTEXT] [--] FORMAT [ARGUMENT ...]
+bashlog_info [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
+bashlog_warning [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
-The same shape applies to every severity helper listed above.
+The same shape applies to every severity helper.
 
-`--context CONTEXT` selects one active redaction context for this call.
+Before the format string begins:
 
-`--` explicitly ends bashlog option parsing.  It is required when the intended
-format string begins with `-` or could otherwise be interpreted as a bashlog
-option.  It MAY be used unconditionally for clarity.
+- `--context CONTEXT` selects one active redaction context for this logging call;
+- `--tag TAG` adds one caller-supplied tag and MAY be repeated;
+- `--` ends bashlog option parsing.
 
-Only `--context` and `--` are recognized as logging-call options in the initial
-API.  Unknown options return `64` without emitting the caller's message.
+`--context` and `--tag` MAY appear in either order before the format string or
+`--`.  At most one `--context` is accepted.  A duplicate context option returns
+`64`.
 
-A logging call that omits `--context` performs no context-based redaction.  This
-is intentional because redaction is opt-in.
+`--` is required when the intended format string begins with `-` or could
+otherwise be interpreted as a bashlog option.  It MAY be used unconditionally for
+clarity.
 
-There is no ambient or implicit "current redaction context" in the initial API.
-Context choice is explicit at each logging call that requires redaction.
+For example:
+
+```bash
+bashlog_info --context secrets -- '-token=%s' "${token}"
+```
+
+The delimiter has no redaction meaning.  It separates bashlog options from the
+`FORMAT [ARGUMENT ...]` interface.
+
+An unrecognized leading option returns `64` without emitting the caller's
+message.
+
+The ordinary case remains intentionally terse:
+
+```bash
+bashlog_info "This is an info message."
+```
+
+No context is inferred for that call.
+
+## Tags
+
+A tag supplied through `--tag TAG` MUST initially match the explicitly ASCII
+grammar:
+
+```text
+[A-Za-z0-9_.:-]+
+```
+
+An empty tag, whitespace, bracket characters, control characters, or non-ASCII
+characters therefore return `64` at the call boundary.
+
+Tags preserve exact argument order.
+
+When a logging call explicitly selects a redaction context, each caller-supplied
+tag is transformed and verified independently under that same context before
+rendering.  A literal replacement may cause the transformed tag to no longer
+match the input tag grammar.  That does not undo a successful redaction:
+
+- the human renderer places the resulting value inside its documented tag
+  brackets;
+- the logfmt renderer quotes and escapes a transformed tag that no longer matches
+  the unquoted token grammar.
+
+No ambient or global tag configuration is part of this contract.  Applications
+that need a constant component tag MAY use caller-owned wrapper functions.
 
 ## `printf`-Style Message Construction
 
 `FORMAT` and subsequent arguments use Bash builtin `printf` formatting semantics.
-The implementation SHALL construct the message in shell state before rendering
-or emission.
+The implementation SHALL construct the complete semantic message in shell state
+before primary logging-pipeline redaction or rendering.
 
 Callers SHOULD use a literal format and pass arbitrary data as arguments:
 
@@ -302,92 +462,263 @@ A formatting error returns `64` and the caller's message is not emitted.
 Bash variables cannot faithfully represent embedded NUL bytes.  bashlog therefore
 does not promise logging or redaction behavior for data requiring embedded NUL.
 
-## Rendered Log Format
+## Human Renderer
 
-The initial rendered form is deliberately minimal:
+The human renderer is compact and human-oriented.
+
+With timestamping disabled and no tags:
 
 ```text
 LEVEL: MESSAGE
 ```
 
-where `LEVEL` is the canonical lowercase severity name.
+With tags:
+
+```text
+LEVEL [TAG] [TAG]: MESSAGE
+```
+
+With a timestamp:
+
+```text
+[TIMESTAMP] LEVEL [TAG]: MESSAGE
+```
+
+Examples without ANSI decoration:
+
+```text
+info: application started
+warning [database]: connection delayed
+[2026-08-30T18:40:00Z] error [api]: request failed
+```
+
+The canonical lowercase severity is always present.  Color, when enabled,
+decorates only that severity token.
+
+Human rendering preserves representable message bytes according to Bash string
+semantics.  In particular, an embedded newline in the message remains an embedded
+newline.  The human renderer is not a generic log-injection sanitizer.
+
+bashlog appends exactly one final newline after the completed record when emitting
+it to standard error.
+
+## Logfmt Renderer
+
+The machine-oriented renderer uses a deliberately constrained logfmt profile.
+logfmt is established prior art rather than a formally standardized protocol, so
+this specification owns the exact representation bashlog emits.
+
+Field order is deterministic:
+
+```text
+[ts=TIMESTAMP] level=LEVEL [tag=TAG ...] msg=MESSAGE
+```
+
+The fields are:
+
+- `ts`, present only when timestamping is enabled;
+- `level`, always present with the canonical lowercase severity;
+- zero or more repeated `tag` fields in caller order;
+- `msg`, always present with the complete formatted message.
 
 Examples:
 
 ```text
-info: application started
-warning: configuration is deprecated
-error: connection failed
+level=info msg="application started"
+level=warning tag=database msg="connection delayed"
+ts=2026-08-30T18:40:00Z level=error tag=api msg="request failed"
 ```
 
-bashlog appends exactly one newline after the rendered candidate when emitting it.
-The message itself is otherwise preserved according to Bash string semantics and
-the configured redaction transformations.
+`ts` and `level` are library-generated safe tokens and are emitted unquoted.
+A tag that satisfies the tag token grammar is emitted unquoted.  A transformed
+tag that no longer satisfies that grammar is quoted using the same string encoder
+used for `msg`.
 
-The initial renderer does not automatically add:
+`msg` is always enclosed in double quotes, including an empty message and a
+message that could otherwise be represented as an unquoted token.  This keeps the
+message boundary deterministic.
 
-- timestamps;
-- hostnames;
-- process identifiers;
-- application names;
-- Git revisions;
-- colors;
-- syslog facilities;
-- or tags.
+### Logfmt String Escaping
 
-Callers that require such data may construct it themselves and pass it as message
-data.  If caller code invokes an external command to acquire that information,
-the caller owns that external-command boundary.
+Within a quoted value, bashlog emits these exact escapes:
 
-Embedded newlines and other representable control characters in a message are not
-escaped or normalized by the initial renderer.  Callers requiring single-line or
-log-injection-resistant message normalization must perform that transformation
-before calling bashlog.  This limitation SHOULD be revisited only through an
-explicit behavioral or architectural decision rather than silent sanitization.
+| Input | Encoded bytes |
+| --- | --- |
+| backslash | `\\` |
+| double quote | `\"` |
+| horizontal tab | `\t` |
+| carriage return | `\r` |
+| line feed | `\n` |
+| other ASCII controls `0x01` through `0x1F` | `\u00XX` |
+| DEL `0x7F` | `\u007F` |
 
-## Logging Output Stream
+`XX` is uppercase hexadecimal in bashlog output.  NUL remains outside the Bash
+string contract.
 
-All public logging functions emit their final log record to **standard error**.
+Other representable characters, including valid multibyte text, are preserved as
+represented by Bash.
 
-This applies to every severity.  bashlog does not use standard output for normal
+The escaping profile intentionally follows established logfmt/Go quoted-string
+prior art for quotes, backslashes, standard controls, and `\u00XX` control
+encoding.  Renderer escaping is a serialization step, not a redaction mechanism.
+
+The logfmt renderer emits one physical log line for representable message data
+because embedded tabs, carriage returns, newlines, and other ASCII control bytes
+are escaped.
+
+## Logging Output Stream and Environment Boundary
+
+All public logging functions emit their final record to **standard error**.
+
+This applies to every severity.  bashlog does not use standard output for routine
 logging because standard output is commonly an application's data channel in
 shell programs, pipelines, and command substitutions.
 
-A caller may redirect standard error using ordinary Bash redirection.
+A caller may redirect standard error using ordinary shell redirection.
 
-The initial API does not provide:
+Standard error is the universal bashlog sink.  bashlog does not attempt to infer
+what consumes file descriptor 2.  The surrounding environment may send that
+stream to a terminal, systemd journal, Docker or Podman logging driver, CI log,
+cron capture, file, pipe, orchestrator, or another destination.
 
-- built-in file sinks;
-- caller-selected file-descriptor configuration;
-- syslog emission;
-- network sinks;
-- or external-command sinks.
+The default `format=auto` behavior adapts only to whether file descriptor 2 is a
+TTY.  It does not identify the downstream logging infrastructure.
 
-Those capabilities require separate review because every new sink participates in
-the final redaction boundary.
+The API does not provide implicit:
+
+- file sinks;
+- caller-selected file-descriptor sinks;
+- syslog transport;
+- journald socket transport;
+- TCP or UDP log transport;
+- `logger` invocation;
+- or another external-command sink.
+
+A future direct remote-syslog or alternate-sink feature requires separate
+architectural review.
+
+## Redaction Is Explicit and Developer-Owned
+
+Redaction is opt-in defense in depth.
+
+bashlog does not decide what developers may log, does not identify sensitive data
+heuristically, does not create a default redaction context, and does not apply
+registered contexts automatically.
+
+The developer owns three decisions:
+
+1. what application data is sensitive;
+2. which rules belong in a redaction context;
+3. when that context should be invoked.
+
+Registering a context creates an available mechanism.  It does not create ambient
+logging policy.
+
+This explicitness is intentional.  Logging is a data-egress boundary.  Ordinary
+`debug`, `info`, or error-reporting calls can leak passwords, tokens, identifiers,
+personal data, or other sensitive values if developers do not account for those
+values.  bashlog provides a strong mechanism when invoked without pretending it
+can replace application knowledge and developer judgment.
+
+## Two Explicit Redaction Workflows
+
+Callers may choose either of two supported workflows.
+
+### Caller-Managed Redaction
+
+The caller MAY invoke `bashlog_redact` directly, handle its status, and pass the
+result to an ordinary logging call without `--context`.
+
+For example:
+
+```bash
+if redacted_message="$(bashlog_redact secrets "${message}")"; then
+  bashlog_info '%s' "${redacted_message}"
+fi
+```
+
+The caller owns this composition.  The caller must handle redaction failure,
+avoid reintroducing sensitive data afterward, and separately protect any other
+caller-supplied values that require redaction.
+
+The subsequent logging call has no selected context, so it does not rerun that
+context's transformation or final verification.
+
+This workflow is useful when the caller wants the transformed value for another
+purpose or wants exact control over when redaction occurs.
+
+### Logger-Managed Redaction
+
+The caller MAY instead pass:
+
+```text
+--context CONTEXT
+```
+
+to the logging function.
+
+For example:
+
+```bash
+bashlog_info --context secrets 'token=%s' "${token}"
+```
+
+Under this workflow, bashlog owns the composition of message construction,
+redaction, rendering, final verification, and standard-error emission.  Once the
+context is explicitly selected, redaction and verification failures are
+fail-closed.
+
+A logging call without `--context` performs no logging-pipeline redaction and is
+not inspected against unrelated registered contexts.  The data may nevertheless
+already have been redacted by caller-managed use of `bashlog_redact`.
+
+There is no ambient current redaction context.
 
 ## Logging Pipeline
 
-For a syntactically valid call, the observable processing model is:
+For a syntactically valid call, the observable logger-managed processing model is:
 
 ```text
-validate call and requested context
+validate call, tags, and explicitly requested context, if any
     -> severity/threshold decision
     -> printf-style message construction
-    -> render canonical severity and message
-    -> apply selected context's rules in registration order, if any
-    -> perform final verification against every active rule in that context
+    -> acquire optional Bash-native timestamp
+    -> assemble semantic fields
+    -> if --context was selected:
+         transform and verify formatted message
+         transform and verify each caller-supplied tag
+    -> select human or logfmt renderer
+    -> serialize fields and add renderer-owned presentation
+    -> if --context was selected:
+         finally verify the complete rendered candidate
     -> emit to standard error
 ```
 
-No caller-controlled sink-bound text is appended after final redaction
-verification.
+Primary redaction occurs on caller-supplied semantic data **before** human
+punctuation, logfmt quoting/escaping, or ANSI decoration.
 
-A threshold-suppressed call returns `0` and emits nothing.
+The fields transformed during logger-managed primary redaction are:
+
+- the complete formatted message;
+- each caller-supplied tag, independently and in argument order.
+
+Canonical severity and a bashlog-generated timestamp are library-owned metadata.
+They are not rewritten by the primary redaction transformation.  When a context
+is selected, they are still part of the completed candidate checked by final
+non-transforming verification.
+
+A pattern is not promised to span multiple logical fields or to depend on
+renderer punctuation that does not exist during primary redaction.
+
+If transformation or semantic verification of any protected field fails, the
+entire logging operation fails closed.  bashlog does not emit a partially
+protected record.
+
+A threshold-suppressed valid call returns `0` and emits nothing.
 
 ## Redaction Context Selection
 
-A logging call requests redaction only by specifying:
+A logger-managed call requests redaction only by specifying:
 
 ```text
 --context CONTEXT
@@ -399,20 +730,22 @@ The context name must match:
 [A-Za-z_][A-Za-z0-9_.:-]*
 ```
 
+The grammar is explicitly ASCII.
+
 A requested context must already be active.
 
 If a logging call explicitly names a context that is invalid, unknown, or
 destroyed:
 
-- the caller's rendered message MUST NOT be emitted;
+- the caller's message MUST NOT be emitted;
 - the operation returns `64` for an invalid identifier or `69` for an unknown or
   destroyed valid identifier;
 - a fixed safe diagnostic MAY be written as defined below.
 
 An omitted context is different from an unavailable requested context.  Omission
-means "perform this logging operation without context-based redaction."  An
-unavailable requested context means the caller attempted to rely on a policy that
-bashlog cannot provide, so the call fails closed.
+means "log without logger-managed redaction."  An unavailable requested context
+means the caller attempted to rely on a policy that bashlog cannot provide, so the
+call fails closed.
 
 ## `bashlog_redaction_add`
 
@@ -437,7 +770,8 @@ Matcher names are case-sensitive.
 ### Context Creation
 
 If `CONTEXT` is unseen, the first successful rule addition creates it atomically.
-There is no separate public empty-context creation operation.
+There is no separate public empty-context creation operation and no default or
+synthetic context.
 
 If rule validation fails, an unseen context remains unseen.
 
@@ -489,8 +823,8 @@ expansion, command substitution, escape processing, or code evaluation in
 replacement strings.
 
 A rule whose replacement itself satisfies that same rule's matcher is rejected
-with `65` because the rule is predictably incapable of satisfying final
-verification on its own replacement.
+with `65` because the rule is predictably incapable of satisfying verification on
+its own replacement.
 
 ### Return Status
 
@@ -516,9 +850,7 @@ meaning.
 Every non-overlapping exact occurrence is replaced from left to right.
 
 For overlapping possible matches, the leftmost match is replaced and processing
-continues after that matched input.  For example, fixed pattern `aaa` against
-`aaaaa` replaces the first three characters and leaves the final two unless a
-later rule also matches them.
+continues after that matched input.
 
 Exact representable multibyte strings are supported.  This includes ordinary
 UTF-8 text such as accented Latin characters, Cyrillic, CJK text, and emoji when
@@ -542,7 +874,7 @@ that the values are equivalent.
 `glob` uses the deliberately limited basic Bash glob pattern language defined by
 ADR-023.
 
-The initial contract supports ordinary Bash pattern elements such as:
+The contract supports ordinary Bash pattern elements such as:
 
 - `*`;
 - `?`;
@@ -589,40 +921,52 @@ After the last rule, bashlog does **not** restart at the first rule and repeated
 transform until a fixed point is reached.
 
 This bounded model exists so processing cost and meaning remain understandable.
-Security against content reintroduced by later replacements is provided by final
+Security against content reintroduced by later replacements is provided by
 verification rather than iterative rewriting.
 
-## Final Redaction Verification
+## Redaction Verification
 
-After the ordered transformation pass and before emission, bashlog rechecks the
-**complete rendered candidate** against every active rule in the selected
-context.
+The standalone `bashlog_redact` API performs one ordered transformation over its
+exact caller-supplied string and then verifies that transformed result against
+every active rule in the selected context.
 
-This includes fixed, glob, and ERE rules.
+Logger-managed redaction performs that same transform-and-verify operation on the
+formatted message and each tag independently before rendering.
 
-A candidate is eligible for emission only when none of the active rules matches
-it at the final verification point.
+After human or logfmt rendering is complete, a logging call that selected a
+context performs one additional **non-transforming** verification of the complete
+candidate immediately before standard-error emission.
+
+This final check includes library-generated severity, optional timestamp,
+renderer punctuation, logfmt escaping, and human ANSI decoration where present.
+It is defense in depth; it is not the primary redaction mechanism.
+
+A candidate is eligible for emission only when none of the selected context's
+active rules matches it at the applicable verification point.
 
 If:
 
 - any active rule still matches;
 - a matcher cannot be evaluated safely;
-- or final verification cannot otherwise establish that the candidate satisfies
-  the selected policy;
+- or verification cannot otherwise establish that the candidate satisfies the
+  selected policy;
 
-bashlog MUST NOT emit the candidate.
+bashlog MUST NOT emit the protected candidate.  The operation returns `70`.
 
-The library does not attempt iterative repair after final verification fails.
-The operation returns `70`.
+The library does not attempt iterative repair after verification fails.
 
-This protects against cases in which a later rule's literal replacement
-reintroduces content protected by an earlier rule.
+This means a rule that collides with library-generated or renderer-generated text
+may conservatively suppress a logger-managed record.  For example, a fixed rule
+matching the textual severity in the completed candidate does not rewrite the
+severity; final verification suppresses that record instead.
+
+When no logging context is explicitly selected, the logging pipeline performs no
+redaction verification against registered contexts.
 
 ## Redaction Failure Diagnostic
 
-When a logging operation must suppress its candidate because redaction or final
-verification cannot be completed safely, the only permitted diagnostic candidate
-is:
+When an operation must suppress protected data because redaction or verification
+cannot be completed safely, the only permitted diagnostic candidate is:
 
 ```text
 bashlog: message suppressed
@@ -656,11 +1000,11 @@ Destroys an active context as a bashlog policy object.
 
 After success:
 
-- the context cannot be used for logging;
+- the context cannot be used for logging or `bashlog_redact`;
 - no new rules can be appended to that context name;
 - the name cannot be reused during the current Bash process;
-- bashlog removes its active references to the rule data as far as the
-  implementation can intentionally control;
+- bashlog removes its active references to rule data as far as the implementation
+  can intentionally control;
 - non-secret tombstone state MAY remain so name reuse can be rejected.
 
 The operation applies to the entire context.  There is no public individual-rule
@@ -671,7 +1015,7 @@ deletion operation.
 Context destruction is **not** secure memory erasure.
 
 bashlog cannot prove that Bash, libc, the operating system, a core dump, or
-historical copies no longer contain the prior string bytes.  Documentation and
+historical copies no longer contain prior string bytes.  Documentation and
 function comments MUST NOT describe destruction as zeroization or cryptographic
 destruction.
 
@@ -694,10 +1038,10 @@ bashlog_redact CONTEXT STRING
 ### Purpose
 
 Transforms one Bash string under an active redaction context without adding a
-severity label and without performing logging emission.
+severity, timestamp, tag, color, logfmt syntax, or logging emission.
 
-This function exists for caller-owned composition, including cases where a caller
-wants explicitly redacted text before handing it to a sink outside bashlog.
+This function is the caller-managed counterpart to logger-managed `--context`.
+It also supports caller-owned sinks outside bashlog.
 
 ### Behavior
 
@@ -708,9 +1052,6 @@ On success:
 3. performs final verification against every active rule;
 4. writes the verified redacted value to standard output with **no automatically
    added newline**.
-
-The lack of an added newline makes the function suitable for command substitution
-without introducing an extra record-formatting decision.
 
 Example:
 
@@ -733,9 +1074,9 @@ diagnostic rules used by logging calls.
 ### Non-Promise
 
 `bashlog_redact` makes the returned string safe only with respect to the selected
-context's active matcher rules at the point of final verification.  It does not
-claim that the string is generally non-sensitive, safe for every audience, safe
-for every downstream parser, or protected from later caller transformations.
+context's active matcher rules at the point of verification.  It does not claim
+that the string is generally non-sensitive, safe for every audience, safe for
+every downstream parser, or protected from later caller transformations.
 
 If the caller modifies the returned string or combines it with additional data,
 that later result has not been verified by bashlog unless it is passed through a
@@ -749,67 +1090,54 @@ fixed to the corresponding canonical severity.
 For example:
 
 ```text
-bashlog_info [--context CONTEXT] [--] FORMAT [ARGUMENT ...]
+bashlog_info [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
 is equivalent in logging behavior to:
 
 ```text
-bashlog_log info [--context CONTEXT] [--] FORMAT [ARGUMENT ...]
+bashlog_log info [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
 The helpers MUST NOT implement alternate rendering, redaction, verification, or
 emission paths.
 
-## No `bashlog_die` in the Initial Public Contract
+## No `bashlog_die` in the Public Contract
 
-The initial stable public API does not include `bashlog_die`.
+The public API does not include `bashlog_die`.
 
 Exiting a sourced application's shell is control-flow policy.  bashlog provides
 logging primitives; the caller chooses whether and how to exit.
 
-A caller may define:
-
-```bash
-die() {
-  local status=1
-
-  if [[ ${1:-} =~ ^[0-9]+$ ]]; then
-    status="$1"
-    shift
-  fi
-
-  bashlog_error "$@" || :
-  exit "${status}"
-}
-```
-
-The example is application code, not library-owned exit behavior.
-
 A future namespaced exit helper would require explicit review because `exit` from
 a sourced library function terminates the caller's shell process.
 
-## No Automatic Timestamp or Environment Acquisition
+## No Automatic Host or Deployment Metadata
 
-The initial API does not automatically acquire timestamps, hostnames, Git
-revisions, usernames, application names, or other environment-specific metadata.
+Optional Bash-native timestamps are logging metadata owned by this contract.
+Their existence does not authorize broader host inspection.
 
-Callers may provide such values explicitly:
+bashlog does not automatically acquire:
 
-```bash
-bashlog_info 'started_at=%s' "$(date -Is)"
-```
+- hostname;
+- process identifier;
+- username;
+- Git revision;
+- application name;
+- systemd unit;
+- container identity;
+- orchestrator metadata;
+- or logging-driver metadata.
 
-In that example, the caller invokes `date`; bashlog does not.  Command
-substitution occurs before bashlog receives the argument, so the caller owns the
-external-command behavior and any failure or disclosure associated with it.
+Callers may provide such values explicitly as message data when appropriate.
+External commands used to obtain them remain caller-owned behavior.
 
 ## No Built-In External Sink
 
-The initial API does not invoke `logger`, `tee`, network clients, or other helper
+The API does not invoke `logger`, `tee`, network clients, or other helper
 commands.
 
-A caller may compose an external integration deliberately:
+A caller may deliberately compose an external integration:
 
 ```bash
 safe="$(bashlog_redact auth "${message}")" || exit
@@ -820,52 +1148,63 @@ The `logger` invocation is caller-owned.  Any metadata, buffering, transport,
 security, or failure semantics introduced after `bashlog_redact` are outside the
 bashlog sink contract.
 
+Running under systemd, Docker, Podman, CI, cron, or another supervisor may cause
+that environment to capture bashlog's normal standard-error stream.  That is
+composition through stderr, not a bashlog-specific transport.
+
 ## Security Promises
 
-Subject to the governing ADRs and the exact matcher semantics above, the initial
-public contract promises:
+Subject to the governing ADRs and exact matcher semantics above, the public
+contract promises:
 
-1. A rule that has been accepted into a context is a security obligation for
-   bashlog operations that explicitly select that context.
-2. The complete rendered logging candidate is redacted and finally verified
+1. A rule accepted into a context is a security obligation for bashlog operations
+   that explicitly invoke that context.
+2. bashlog does not silently apply registered contexts to unrelated logging calls.
+3. Logger-managed primary redaction occurs on caller-supplied semantic message and
+   tag fields before presentation encoding.
+4. A context-protected logging candidate is finally verified after rendering and
    before standard-error emission.
-3. A redaction or verification failure never falls back to emitting the original
-   candidate.
-4. Successful final verification means the candidate matches none of the active
-   rules in the selected context at that point.
-5. Fixed replacements are exact and literal; replacement text is never evaluated
+5. A redaction or verification failure never falls back to emitting the original
+   protected candidate.
+6. Successful verification means the candidate at that verification boundary
+   matches none of the selected context's active rules.
+7. Fixed replacements are exact and literal; replacement text is never evaluated
    or interpreted as a secondary language.
-6. No public getter, list, serialization, or inspection API returns secret-bearing
+8. No public getter, list, serialization, or inspection API returns secret-bearing
    rule contents.
-7. Runtime redaction does not invoke external helper commands.
-8. bashlog does not intentionally persist or export registered redaction state.
-9. Exact representable multibyte values are supported by the fixed matcher.
-10. All severity helpers converge through the same final redaction and emission
-    boundary.
+9. Runtime redaction does not invoke external helper commands.
+10. bashlog does not intentionally persist or export registered redaction state.
+11. Exact representable multibyte values are supported by the fixed matcher.
+12. All severity helpers converge through the same logging, presentation, and
+    optional redaction pipeline.
 
 ## Explicit Non-Promises
 
 The public contract does **not** promise:
 
 1. automatic identification of passwords, tokens, PII, or other sensitive data;
-2. secure memory, memory locking, or reliable zeroization;
-3. protection from malicious code executing in the same Bash interpreter;
-4. protection from `ptrace`, root, debuggers, core dumps, kernel compromise, or
+2. creation of a default redaction policy or automatic application of registered
+   contexts;
+3. secure memory, memory locking, or reliable zeroization;
+4. protection from malicious code executing in the same Bash interpreter;
+5. protection from `ptrace`, root, debuggers, core dumps, kernel compromise, or
    equivalent privileged memory access;
-5. protection from caller-side `set -x` exposure before bashlog receives function
+6. protection from caller-side `set -x` exposure before bashlog receives function
    arguments;
-6. protection for data the caller writes through another path;
-7. retroactive protection for data emitted before a rule was registered;
-8. Unicode normalization or semantic equivalence for distinct byte sequences;
-9. locale-independent glob or ERE semantics;
-10. embedded-NUL support;
-11. single-line normalization or generic log-injection prevention for caller
-    message data;
-12. secret management, encryption, credential storage, or vault functionality;
-13. safety of downstream transformations performed after successful
+7. protection for data the caller writes through another path;
+8. retroactive protection for data emitted before a rule was registered;
+9. Unicode normalization or semantic equivalence for distinct byte sequences;
+10. locale-independent glob or ERE semantics;
+11. embedded-NUL support;
+12. generic log-injection prevention for human-rendered caller message data;
+13. secret management, encryption, credential storage, or vault functionality;
+14. safety of downstream transformations performed after successful
     `bashlog_redact` output;
-14. built-in syslog, network logging, file sinks, timestamps, hostnames, colors,
-    tags, or application metadata in the initial contract.
+15. direct syslog, journald, network, or file delivery;
+16. automatic discovery of systemd, containers, logging drivers, or other
+    deployment infrastructure;
+17. byte-identical `format=auto` output when stderr changes between TTY and
+    non-TTY conditions.
 
 ## Shell Tracing Boundary
 
@@ -925,20 +1264,52 @@ on `__bashlog_*` implementation helpers.
 bashlog does not require aliases, `expand_aliases`, `eval`, generated functions,
 or `export -f` for this purpose.
 
-## Initial Examples
+## Examples
 
 ### Ordinary Logging
 
 ```bash
-bashlog_info 'application started'
-bashlog_warning 'configuration file %s is deprecated' "${config_file}"
+bashlog_info "This is an info message."
 ```
 
-Expected standard-error records:
+On an interactive terminal under the defaults, the human renderer is selected and
+the severity token is colorized.  Ignoring ANSI bytes, the visible record is:
 
 ```text
-info: application started
-warning: configuration file /path/to/config is deprecated
+info: This is an info message.
+```
+
+With non-TTY stderr under the defaults, the same call emits:
+
+```text
+level=info msg="This is an info message."
+```
+
+### Explicit Human Output
+
+```bash
+bashlog_format_set human
+bashlog_color_set never
+bashlog_warning --tag database 'connection delayed'
+```
+
+Expected standard-error record:
+
+```text
+warning [database]: connection delayed
+```
+
+### Explicit Logfmt Output
+
+```bash
+bashlog_format_set logfmt
+bashlog_warning --tag api --tag retry 'request delayed'
+```
+
+Expected standard-error record:
+
+```text
+level=warning tag=api tag=retry msg="request delayed"
 ```
 
 ### Set the Threshold
@@ -950,9 +1321,9 @@ bashlog_error 'emitted'
 ```
 
 The info call returns `0` but writes nothing because it is below the configured
-verbosity threshold.
+threshold.
 
-### Register and Use a Fixed Secret
+### Register and Use a Fixed Secret Through the Logger
 
 ```bash
 password='correct horse battery staple'
@@ -966,11 +1337,36 @@ bashlog_info --context auth \
   "${password}"
 ```
 
-Expected standard-error record:
+The developer created the context and explicitly selected it for the log call.
+With explicit human output and color disabled, the record is:
 
 ```text
 info: authentication failed for password=[REDACTED PASSWORD]
 ```
+
+Under default non-TTY rendering, the equivalent record is:
+
+```text
+level=info msg="authentication failed for password=[REDACTED PASSWORD]"
+```
+
+### Caller-Managed Redaction
+
+```bash
+safe_message="$(bashlog_redact auth "${message}")" || exit
+bashlog_info '%s' "${safe_message}"
+```
+
+The logging call does not need `--context` for the same value because the caller
+already chose and handled the redaction operation.
+
+### Use `--` for a Leading-Dash Format
+
+```bash
+bashlog_info --context auth -- '-token=%s' "${token}"
+```
+
+Everything after `--` belongs to the printf-style message interface.
 
 ### Literal Replacement Characters
 
@@ -982,41 +1378,25 @@ bashlog_info --context auth '%s' 'value=secret'
 The replacement is literal.  No user-name expansion, command substitution,
 backreference, or matched-text substitution occurs.
 
-Expected record:
+## Features Deliberately Outside This Contract
 
-```text
-info: value=&-${USER}-\1-$(id)
-```
+The following remain deferred:
 
-### Redact for a Caller-Owned Sink
-
-```bash
-safe_message="$(bashlog_redact auth "${message}")" || exit
-some_caller_owned_sink "${safe_message}"
-```
-
-bashlog's promise ends at the verified value returned by `bashlog_redact`.
-Behavior introduced by `some_caller_owned_sink` belongs to the caller.
-
-## Features Deliberately Outside the Initial Contract
-
-The following are intentionally deferred until the core contract has been
-implemented, tested, and shown to need them:
-
-- color output;
-- timestamps generated by bashlog;
-- application tags;
-- hostnames;
-- process identifiers;
+- hostnames generated by bashlog;
+- process identifiers generated by bashlog;
 - syslog facilities;
 - built-in `logger` integration;
+- direct journald integration;
 - file sinks;
-- caller-selected file descriptors;
+- caller-selected sink file descriptors;
 - network sinks;
 - automatic environment or Git metadata;
 - aliases for canonical severity names;
 - generic short functions installed by the library;
 - a namespaced `bashlog_die` control-flow helper;
+- ambient/global tags;
+- caller-defined render templates;
+- JSON Lines rendering;
 - context rule listing;
 - individual rule deletion or mutation;
 - context name reuse after destruction;
@@ -1025,22 +1405,42 @@ implemented, tested, and shown to need them:
 - extglob redaction syntax;
 - automatic secret/PII discovery.
 
-Deferral is intentional.  A future feature must preserve the security boundary
-rather than expanding the public surface merely because an implementation is
-possible.
+Deferral is intentional.  A future feature must preserve the security and
+responsibility boundaries rather than expanding the public surface merely because
+an implementation is possible.
 
 ## Required Test Implications
 
-Before the accepted specification can be described as implemented behavior, tests
-SHOULD demonstrate at minimum:
+Before this specification can be described as implemented behavior, tests SHOULD
+demonstrate at minimum:
 
 - source-time silence and absence of trap/shell-option/shopt mutation;
 - Bash 4.3 representative behavior;
+- default presentation state `auto` / `off` / `auto`;
+- atomic validation of presentation setters;
+- `format=auto` selects logfmt for non-TTY stderr and human for TTY stderr;
+- explicit human and logfmt selection overrides automatic selection;
+- exact human severity, tag, timestamp, and color behavior;
+- logfmt never contains bashlog-owned ANSI color;
+- exact deterministic logfmt field ordering;
+- exact logfmt escaping for quotes, backslashes, tabs, carriage returns,
+  newlines, other ASCII controls, and representative multibyte text;
+- timestamp shape, caller timezone preservation, and no timestamp acquisition for
+  threshold-suppressed calls;
+- tag validation is explicitly ASCII and tag order is preserved;
 - threshold boundaries for every severity;
-- exact standard-error rendering for every severity helper;
 - logging functions do not write routine logs to standard output;
 - invalid call syntax returns the documented status and does not emit caller data;
 - unknown and destroyed requested contexts fail closed;
+- registered contexts remain inert for logging calls that omit `--context`;
+- caller-managed `bashlog_redact` followed by ordinary logging works as
+  documented;
+- logger-managed `--context` redacts the formatted semantic message before
+  rendering;
+- logger-managed `--context` protects tags before rendering;
+- library-generated severity is not transformed by primary redaction;
+- final verification includes the complete rendered record for context-protected
+  logging calls;
 - context creation is atomic with first successful registration;
 - active context policy is append-only;
 - duplicate rules are rejected;
@@ -1048,8 +1448,7 @@ SHOULD demonstrate at minimum:
 - replacement strings containing `&`, backslashes, `$()`, `${...}`, glob
   metacharacters, and ERE-like text remain literal;
 - fixed matching handles multiple and adjacent occurrences;
-- fixed matching handles representative UTF-8 values including accented Latin,
-  Cyrillic, CJK, emoji, and combining sequences as exact input sequences;
+- fixed matching handles representative UTF-8 values as exact input sequences;
 - normalization-equivalent but byte-distinct strings are not falsely promised to
   match;
 - glob and ERE zero-length-capable patterns are rejected;
@@ -1058,9 +1457,6 @@ SHOULD demonstrate at minimum:
 - rule ordering is deterministic;
 - later replacements cannot reintroduce earlier protected content and still be
   emitted;
-- final verification covers the complete rendered record, including the severity
-  label and message;
-- every successful redacted emission contains none of the active rule matches;
 - redaction failure diagnostics contain no caller message or rule contents;
 - a diagnostic matching an active rule is itself suppressed;
 - `bashlog_redact` adds no newline and never writes the original string on
@@ -1073,7 +1469,8 @@ SHOULD demonstrate at minimum:
 
 Security tests SHOULD include explicit negative assertions against stdout,
 stderr, and captured diagnostics so a test cannot pass merely because the
-expected replacement appeared while the original secret also leaked elsewhere.
+expected replacement appeared while the original protected value also leaked
+elsewhere.
 
 ## Governing Decisions
 
@@ -1094,6 +1491,14 @@ This accepted specification is derived primarily from:
 - ADR-022: Fixed-String Redaction and Multibyte Guarantees
 - ADR-023: Glob and ERE Redaction Semantics
 - ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
+- ADR-025: Optional Presentation Metadata, Tags, and Color
+- ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr
+  Transport
+
+ADR-026 supersedes the portions of ADR-017 and ADR-024 that assumed primary
+logging redaction transforms a complete rendered `level: message` candidate.
+Their common-pipeline, opt-in-security, fail-closed, and safe-diagnostic principles
+remain in force.
 
 If implementation experience demonstrates that this specification cannot satisfy
 a governing architectural promise clearly and readably on Bash 4.3, the project
