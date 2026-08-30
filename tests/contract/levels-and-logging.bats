@@ -3,10 +3,14 @@
 setup() {
   bats_require_minimum_version 1.5.0
   : "${BASHLOG_ARTIFACT:?BASHLOG_ARTIFACT must identify the artifact under test}"
+
+  HUMAN_ARTIFACT="${BATS_TEST_TMPDIR}/bashlog-human.bash"
+  printf 'source %q\nbashlog_format_set human\nbashlog_color_set never\n' \
+    "${BASHLOG_ARTIFACT}" >"${HUMAN_ARTIFACT}"
 }
 
 run_bashlog_script() {
-  run --separate-stderr bash --noprofile --norc -s -- "${BASHLOG_ARTIFACT}" "$@"
+  run --separate-stderr bash --noprofile --norc -s -- "${HUMAN_ARTIFACT}" "$@"
 }
 
 @test "default threshold is canonical info" {
@@ -268,7 +272,7 @@ BASH
   [ "${stderr}" = 'info: value=secret' ]
 }
 
-@test "embedded newline is preserved rather than silently normalized" {
+@test "embedded newline is preserved rather than silently normalized in human mode" {
   run_bashlog_script <<'BASH'
     source "$1"
     bashlog_info '%s' $'first\nsecond'
