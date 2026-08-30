@@ -36,10 +36,11 @@ never becomes the mechanism by which a secret is located or removed.
 This ADR does not change ADR-018's opt-in security model.  bashlog provides
 redaction capability; it does not decide that a logging call requires redaction.
 The developer retains responsibility for deciding what is sensitive, registering
-the appropriate rules, and explicitly choosing whether to invoke redaction before
-logging or to delegate that work to the logging call with `--context CONTEXT`.
-Once a context is explicitly invoked, bashlog assumes the corresponding
-fail-closed security obligation within the selected API boundary.
+the appropriate rules, creating the context that contains those rules, and
+explicitly choosing whether to invoke redaction before logging or to delegate
+that work to the logging call with `--context CONTEXT`.  Once a context is
+explicitly invoked, bashlog assumes the corresponding fail-closed security
+obligation within the selected API boundary.
 
 ## Context
 
@@ -112,6 +113,20 @@ and bashlog does not apply every registered context merely because one or more
 contexts exist.  That behavior is deliberate: the developer owns the decision to
 invoke the redaction facility.
 
+The developer must also proactively create and populate an applicable context
+before either redaction workflow can use it.  bashlog does not manufacture a
+default context, infer rules from variable names or message contents, or silently
+assemble a policy from other registered contexts.  The developer defines the
+policy by registering rules; bashlog enforces that policy only when the developer
+explicitly invokes it.
+
+This explicitness has value beyond bashlog itself.  Logging is a data-egress
+boundary even when the logging call looks routine.  Requiring an intentional
+context and an intentional invocation makes the possibility of passwords, tokens,
+identifiers, personal data, or other sensitive values entering logs visible at
+design and review time rather than pretending that a logger is inherently
+harmless.
+
 The developer may also invoke `bashlog_redact` directly before calling a logging
 function.  In that workflow, the logging function receives data the caller has
 already chosen to transform and therefore does not need a context for that same
@@ -145,10 +160,14 @@ problem.
   downstream systems and later readers do not lose the classification.
 - Redaction must remain explicitly developer-selected rather than becoming
   automatic application policy.
+- Redaction policy itself must remain developer-defined through explicit context
+  and rule registration; bashlog should not synthesize a default policy.
 - Callers should be free either to invoke redaction directly or to delegate it to
   a logging call through an explicit context parameter.
 - bashlog should provide strong mechanisms without assuming that it knows the
   application's sensitivity model better than the developer.
+- The API should make log leakage a visible design concern without turning that
+  concern into automatic or paternalistic policy.
 - Primary redaction should operate on semantic caller data, not renderer-specific
   encoded text.
 - Rendering and escaping should never need to understand how secrets were found.
@@ -255,13 +274,17 @@ bashlog SHALL NOT:
 
 - infer from message contents that redaction should occur;
 - infer which values are sensitive;
+- create a default redaction context;
+- synthesize redaction rules on the developer's behalf;
 - automatically select a registered context;
 - maintain an ambient current logging context;
 - apply every active context to every logging call;
 - or silently enable redaction because one or more rules have been registered.
 
 Registering rules creates a capability that the developer may invoke.  It does
-not create implicit policy for unrelated logging calls.
+not create implicit policy for unrelated logging calls.  The developer must
+proactively create/populate a context whose rules express the protection required
+by the application.
 
 A logging call that does not explicitly select a redaction context SHALL proceed
 without bashlog logging-pipeline redaction transformation or redaction final
@@ -283,7 +306,8 @@ judgment for the developer's.
 
 bashlog SHALL support two equally legitimate developer-controlled workflows.
 Neither workflow is automatic, and neither is treated as the preferred policy for
-all applications.
+all applications.  Both workflows assume that the developer has already created
+an applicable context by successfully registering one or more rules.
 
 #### Caller-Managed Redaction
 
@@ -293,7 +317,8 @@ the resulting value to an ordinary logging call without `--context`.
 Conceptually:
 
 ```text
-caller data
+developer registers context/rules
+    -> caller data
     -> bashlog_redact CONTEXT STRING
     -> caller handles success/failure
     -> bashlog logging function without --context
@@ -639,10 +664,11 @@ the runtime and failure boundary beyond the universal standard-error sink.
 3. **Narrow automatic behavior.**  `auto` depends only on `[[ -t 2 ]]` and does
    not infer a container, operating system, init system, or logging platform.
 
-4. **Developer-owned redaction choice.**  bashlog never silently decides that a
-   logging call should be redacted.  Registration creates an available mechanism;
-   the caller may invoke `bashlog_redact` directly or select `--context CONTEXT`
-   on a logging call.
+4. **Developer-owned redaction policy and invocation.**  bashlog never silently
+   decides what is sensitive, creates a default protection policy, or decides that
+   a logging call should be redacted.  The developer creates/populates the
+   context, then either invokes `bashlog_redact` directly or selects
+   `--context CONTEXT` on a logging call.
 
 5. **Two explicit composition models.**  Caller-managed redaction and logger-
    managed redaction are both supported public workflows, with responsibility
@@ -714,8 +740,9 @@ the runtime and failure boundary beyond the universal standard-error sink.
    representation is the purpose of that mode.
 
 9. bashlog does not promise to discover or automatically redact sensitive data.
-   A developer who neither pre-redacts data nor explicitly selects an appropriate
-   logging context receives ordinary unredacted logging behavior.
+   A developer who has not created an applicable context, or who neither pre-
+   redacts data nor explicitly selects that context for logging, receives ordinary
+   unredacted logging behavior.
 
 10. Caller-managed redaction does not automatically extend to separate fields
     added later by the logging call.  A manually redacted message does not imply
@@ -735,8 +762,8 @@ This decision accounts for:
 
 - a developer who writes the application without knowing its final deployment
   environment;
-- a developer who intentionally chooses whether a particular value or logging
-  call should use redaction;
+- a developer who intentionally defines a redaction context and chooses whether a
+  particular value or logging call should use it;
 - a caller that handles redaction separately and then passes already-transformed
   data to the logger;
 - the same script moving from a terminal to systemd, Docker, Podman, cron, CI, or
@@ -764,8 +791,9 @@ forwarding, access control, and downstream parsing are outside bashlog's process
 boundary.
 
 The decision also does not protect a logging call from sensitive data that the
-developer chose to emit without either pre-redacting it or selecting logger-
-managed redaction.  That is application policy, not a redaction-engine failure.
+developer chose to emit without first defining applicable redaction policy and
+either pre-redacting it or selecting logger-managed redaction.  That is
+application policy, not a redaction-engine failure.
 
 ## Operational Constraints
 
@@ -778,6 +806,9 @@ managed redaction.  That is application policy, not a redaction-engine failure.
 - The canonical severity MUST remain present in human and logfmt output.
 - Severity threshold decisions MUST remain independent of renderer selection.
 - Redaction MUST remain opt-in.
+- bashlog MUST NOT create a default redaction context or infer redaction rules.
+- The developer MUST create/populate an applicable context before either explicit
+  redaction workflow can use it.
 - Registering rules MUST NOT create an ambient or automatically applied logging
   context.
 - Callers MUST remain free to invoke `bashlog_redact` before logging without
@@ -811,6 +842,19 @@ managed redaction.  That is application policy, not a redaction-engine failure.
   review.
 
 ## Considered Alternatives
+
+### Create or Infer a Default Redaction Context
+
+bashlog could create a built-in context, infer one from registered values, or
+attempt to populate a default policy from recognizable variable names or common
+secret formats.
+
+It was rejected because the library does not know the application's sensitivity
+model.  A default context would either miss data that matters or transform data
+the developer did not intend to protect, while making the call site appear safer
+than it actually is.  Explicit context creation keeps the protection model
+reviewable and requires the developer to participate in defining what clean logs
+mean for the application.
 
 ### Require Logger-Managed Redaction Only
 
@@ -1002,11 +1046,18 @@ timestamp policy, explicitly selected redaction policy, and sink.
 The developer remains in control of whether redaction is active and how it is
 composed with logging.  A caller may pre-redact a value and then use an ordinary
 logging call, or may pass `--context CONTEXT` and let the logger perform the
-composition.  This means bashlog will intentionally emit unredacted caller data
-when the developer has done neither.  That is not a failure of the security
+composition.  In either case, the developer must first define the applicable
+context and rules.  This means bashlog will intentionally emit unredacted caller
+data when the developer has done neither.  That is not a failure of the security
 boundary; no redaction boundary was invoked for that data.  The tradeoff is
 accepted because hidden application policy would be more surprising and would
 undermine the project's explicitness and agency principles.
+
+The visible redaction mechanism also makes a broader engineering risk harder to
+ignore: log output can leak application data even when the logger itself appears
+to be mundane infrastructure.  bashlog does not solve that risk automatically;
+it gives developers a concrete mechanism and vocabulary for addressing it
+intentionally.
 
 The redaction architecture also becomes cleaner when logger-managed redaction is
 invoked.  Application-controlled data is protected before presentation begins,
@@ -1073,6 +1124,7 @@ The following earlier principles remain in force:
 - all bashlog-provided logging helpers converge through one security-sensitive
   pipeline;
 - redaction remains opt-in and context selection remains explicit;
+- the developer defines redaction policy by explicitly registering context rules;
 - callers may independently invoke `bashlog_redact` before logging;
 - an explicitly selected logging context creates a fail-closed logging obligation;
 - rule ordering and matcher semantics remain those defined by ADR-021 through
@@ -1091,9 +1143,9 @@ developer invokes it explicitly.
 - The normative specification must define exact per-field logger-managed
   redaction and the transition from the current complete-candidate implementation
   while preserving both explicit redaction workflows.
-- The normative specification should include examples of caller-managed
-  `bashlog_redact` composition, logger-managed `--context CONTEXT`, and `--`
-  option termination.
+- The normative specification should include examples of context creation/rule
+  registration, caller-managed `bashlog_redact` composition, logger-managed
+  `--context CONTEXT`, and `--` option termination.
 - Tests must demonstrate that `bashlog_info "This is an info message."` remains a
   valid ordinary call with no mandatory options or delimiter.
 - Tests must demonstrate that a leading-hyphen format string can be passed after
