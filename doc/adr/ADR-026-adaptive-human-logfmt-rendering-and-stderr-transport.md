@@ -36,9 +36,10 @@ never becomes the mechanism by which a secret is located or removed.
 This ADR does not change ADR-018's opt-in security model.  bashlog provides
 redaction capability; it does not decide that a logging call requires redaction.
 The developer retains responsibility for deciding what is sensitive, registering
-the appropriate rules, and explicitly selecting a context when logging.  Once a
-context is explicitly selected, bashlog assumes the corresponding fail-closed
-security obligation.
+the appropriate rules, and explicitly choosing whether to invoke redaction before
+logging or to delegate that work to the logging call with `--context CONTEXT`.
+Once a context is explicitly invoked, bashlog assumes the corresponding
+fail-closed security obligation within the selected API boundary.
 
 ## Context
 
@@ -111,6 +112,13 @@ and bashlog does not apply every registered context merely because one or more
 contexts exist.  That behavior is deliberate: the developer owns the decision to
 invoke the redaction facility.
 
+The developer may also invoke `bashlog_redact` directly before calling a logging
+function.  In that workflow, the logging function receives data the caller has
+already chosen to transform and therefore does not need a context for that same
+message.  This is a first-class use of the public API, not a workaround.  It is
+particularly useful when the caller wants to reuse a redacted value outside the
+logging call or wants exact control over when transformation occurs.
+
 The project also considered syslog framing and direct syslog transport while
 exploring this problem.  Local systemd journal integration can already occur
 through the normal standard-error stream.  Docker and Podman likewise already own
@@ -137,13 +145,15 @@ problem.
   downstream systems and later readers do not lose the classification.
 - Redaction must remain explicitly developer-selected rather than becoming
   automatic application policy.
+- Callers should be free either to invoke redaction directly or to delegate it to
+  a logging call through an explicit context parameter.
 - bashlog should provide strong mechanisms without assuming that it knows the
   application's sensitivity model better than the developer.
 - Primary redaction should operate on semantic caller data, not renderer-specific
   encoded text.
 - Rendering and escaping should never need to understand how secrets were found.
 - Final verification should remain a fail-closed defense immediately before the
-  sink boundary when a context has been explicitly selected.
+  sink boundary when a context has been explicitly selected for the logging call.
 - Runtime behavior must remain pure Bash and compatible with the accepted Bash
   floor unless a separate ADR intentionally changes that floor.
 - The format choice should remain explicitly overrideable for callers with a
@@ -254,8 +264,10 @@ Registering rules creates a capability that the developer may invoke.  It does
 not create implicit policy for unrelated logging calls.
 
 A logging call that does not explicitly select a redaction context SHALL proceed
-without bashlog redaction transformation or redaction final verification.  That
-record is intentionally unredacted by bashlog.
+without bashlog logging-pipeline redaction transformation or redaction final
+verification.  That record is intentionally unredacted by the logging function,
+unless the caller independently redacted the data before passing it to the
+logger.
 
 A logging call that explicitly selects a context SHALL validate that context
 according to the accepted contract and SHALL enter the fail-closed redaction path
@@ -266,6 +278,104 @@ application's data model, sensitivity requirements, performance needs, and
 logging purpose.  bashlog supplies an auditable mechanism and strong behavior
 once that mechanism is explicitly invoked; it does not substitute its own policy
 judgment for the developer's.
+
+### Two Explicit Redaction Workflows
+
+bashlog SHALL support two equally legitimate developer-controlled workflows.
+Neither workflow is automatic, and neither is treated as the preferred policy for
+all applications.
+
+#### Caller-Managed Redaction
+
+The caller MAY invoke `bashlog_redact` directly, handle its status, and then pass
+the resulting value to an ordinary logging call without `--context`.
+
+Conceptually:
+
+```text
+caller data
+    -> bashlog_redact CONTEXT STRING
+    -> caller handles success/failure
+    -> bashlog logging function without --context
+    -> renderer
+    -> standard error
+```
+
+For example:
+
+```bash
+if redacted_message="$(bashlog_redact secrets "${message}")"; then
+  bashlog_info '%s' "${redacted_message}"
+fi
+```
+
+This form gives the developer explicit control over the transformed value and
+allows the same redacted value to be reused elsewhere if desired.
+
+The caller owns the composition between the two APIs.  In particular, the caller
+must handle a non-zero `bashlog_redact` status rather than assuming transformation
+succeeded, must avoid reintroducing sensitive data afterward, and must separately
+redact any other caller-supplied values that also require protection.  For
+example, manually redacting only the message does not implicitly redact a later
+`--tag` value.
+
+The subsequent logging call has no selected context and therefore does not rerun
+redaction or final verification against that context.  It logs the value the
+caller supplied according to the normal logging contract.
+
+#### Logger-Managed Redaction
+
+Alternatively, the caller MAY pass a redaction context directly to the logging
+function:
+
+```text
+bashlog_LEVEL [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
+```
+
+For example:
+
+```bash
+bashlog_info --context secrets 'Token is %s' "${token}"
+```
+
+The `--context CONTEXT` option is an optional named parameter to the logging
+operation.  It means: construct the semantic message using the normal
+`printf`-style contract, then apply this redaction context to the caller-supplied
+logging fields before selecting and executing the renderer.
+
+Under this form, bashlog owns the composition between logging and redaction.  A
+failure in context validation, transformation, protected-field verification, or
+final sink-bound verification follows the documented fail-closed logging path.
+The caller does not need to manually pipe or copy the transformed message between
+public APIs.
+
+The ordinary case remains terse and intentionally unredacted:
+
+```bash
+bashlog_info "This is an info message."
+```
+
+No context is inferred from registered state.
+
+#### Option-Termination with `--`
+
+`--` explicitly ends bashlog logging-option parsing.  It is required when the
+intended format string begins with `-` or could otherwise be interpreted as a
+bashlog option, and it MAY be used unconditionally when the caller prefers an
+explicit delimiter.
+
+For example:
+
+```bash
+bashlog_info --context secrets -- '-token=%s' "${token}"
+```
+
+Here, `--context secrets` is logging configuration, while everything after `--`
+belongs to the `FORMAT [ARGUMENT ...]` interface.
+
+The delimiter has no redaction semantics of its own.  Its purpose is to preserve
+an unambiguous, self-describing Bash call surface, especially as logging options
+such as `--context` and `--tag` coexist with arbitrary format strings.
 
 ### Logical Record and Security Ordering
 
@@ -281,7 +391,7 @@ zero or more tags
 optional timestamp
 ```
 
-The processing order SHALL be conceptually:
+For the logger-managed workflow, the processing order SHALL be conceptually:
 
 ```text
 validate call and explicitly requested context, if any
@@ -299,9 +409,9 @@ validate call and explicitly requested context, if any
     -> emit to standard error
 ```
 
-Primary redaction occurs only when the developer explicitly selects a context.
-When selected, it occurs before renderer-specific quoting, escaping, punctuation,
-or ANSI decoration.
+Primary logging-pipeline redaction occurs only when the developer explicitly
+selects a context on the logging call.  When selected, it occurs before renderer-
+specific quoting, escaping, punctuation, or ANSI decoration.
 
 The caller-supplied fields subject to the selected redaction context SHALL be:
 
@@ -325,7 +435,8 @@ to span multiple logical fields or to depend on the exact delimiters that one
 renderer places between fields.
 
 The public `bashlog_redact` operation remains an explicitly invoked transform-only
-API over the exact string supplied by its caller.  This ADR changes how the
+API over the exact string supplied by its caller.  It is the caller-managed
+counterpart to the logger-managed `--context` workflow.  This ADR changes how the
 logging pipeline uses a context when the developer selects one; it does not
 change the standalone transform API's meaning or make that API automatic.
 
@@ -344,8 +455,9 @@ warning [database]: connection delayed
 
 The canonical lowercase severity name is retained.
 
-Human punctuation is presentation syntax.  When redaction is selected, that
-syntax is created only after caller data has passed the primary redaction stage.
+Human punctuation is presentation syntax.  When logger-managed redaction is
+selected, that syntax is created only after caller data has passed the primary
+redaction stage.
 
 ### Logfmt Renderer
 
@@ -368,8 +480,8 @@ where:
 - `level` always appears and contains the canonical lowercase severity;
 - zero or more `tag` fields appear in the exact order supplied to the logging
   call;
-- `msg` always appears and contains the formatted message, redacted first only
-  when the developer explicitly selected a context.
+- `msg` always appears and contains the formatted message, transformed first only
+  when the developer explicitly selected logger-managed redaction with a context.
 
 Examples:
 
@@ -384,13 +496,15 @@ rules for every representable Bash string accepted as message data.  At minimum,
 spaces, quotes, backslashes, tabs, carriage returns, newlines, empty strings, and
 other supported control bytes require deterministic behavior.
 
-When a context is selected, quoting and escaping SHALL occur only after the
-semantic field being encoded has satisfied the primary redaction stage.  The
-serializer therefore does not need to locate protected values inside escaped text
-and SHALL NOT contain a second, renderer-specific redaction language.
+When a context is selected on the logging call, quoting and escaping SHALL occur
+only after the semantic field being encoded has satisfied the primary redaction
+stage.  The serializer therefore does not need to locate protected values inside
+escaped text and SHALL NOT contain a second, renderer-specific redaction language.
 
 When no context is selected, the serializer encodes the caller's semantic data as
-provided; it does not opportunistically redact values during serialization.
+provided.  That data may already have been redacted by an earlier explicit
+`bashlog_redact` call, but the renderer does not attempt to determine whether that
+occurred and does not opportunistically redact values during serialization.
 
 The implementation SHALL NOT call the result logfmt-compatible until fixture
 tests demonstrate that representative lines are accepted by established logfmt
@@ -429,9 +543,9 @@ interactive terminal  -> human + color
 non-terminal stderr    -> logfmt + no color
 ```
 
-When a context is selected, ANSI decoration SHALL be added after primary
-redaction.  Color bytes therefore cannot prevent a caller-supplied secret from
-being found by the redaction engine.
+When a context is selected on the logging call, ANSI decoration SHALL be added
+after primary redaction.  Color bytes therefore cannot prevent a caller-supplied
+secret from being found by the redaction engine.
 
 ### Timestamps and Tags Across Renderers
 
@@ -449,16 +563,17 @@ ts=2026-08-30T18:40:00Z level=warning tag=database msg="connection delayed"
 ```
 
 Timestamping remains disabled by default.  Tags remain explicit per-call data.
-When a context is selected, tags are protected before either renderer serializes
-them.  When no context is selected, tags are rendered as supplied after normal
-tag validation.
+When a context is selected on the logging call, tags are protected before either
+renderer serializes them.  When no context is selected, tags are rendered as
+supplied after normal tag validation, regardless of whether the caller separately
+pre-redacted the message.
 
 ### Final Verification After Rendering
 
 ADR-024 established the useful invariant that bytes governed by an explicitly
 selected redaction context must not cross the sink boundary when verification
 cannot be completed safely.  This ADR retains that fail-closed defense while
-moving primary transformation earlier in the pipeline.
+moving primary transformation earlier in the logger-managed pipeline.
 
 When and only when a logging call explicitly selects a redaction context, bashlog
 SHALL perform a final non-transforming verification after human/logfmt
@@ -475,9 +590,11 @@ successfully.  Such a false-positive suppression is preferable to weakening the
 existing fail-closed sink invariant.  The implementation SHALL NOT respond by
 iteratively rewriting renderer output until verification passes.
 
-When no redaction context is explicitly selected, no redaction verification is
-performed.  bashlog does not inspect the record against unrelated registered
-contexts merely because they exist.
+When no redaction context is explicitly selected on the logging call, no logging-
+pipeline redaction verification is performed.  bashlog does not inspect the
+record against unrelated registered contexts merely because they exist.  A caller
+that pre-redacted data with `bashlog_redact` has already exercised that API's own
+transformation and verification boundary before handing the result to the logger.
 
 If experience demonstrates that verifying encoded bytes against semantic rules
 creates unacceptable false positives, that behavior must be reconsidered through
@@ -524,38 +641,45 @@ the runtime and failure boundary beyond the universal standard-error sink.
 
 4. **Developer-owned redaction choice.**  bashlog never silently decides that a
    logging call should be redacted.  Registration creates an available mechanism;
-   explicit context selection activates it for a logging call.
+   the caller may invoke `bashlog_redact` directly or select `--context CONTEXT`
+   on a logging call.
 
-5. **Durable severity.**  Every emitted renderer preserves the canonical severity
+5. **Two explicit composition models.**  Caller-managed redaction and logger-
+   managed redaction are both supported public workflows, with responsibility
+   boundaries documented for each.
+
+6. **Durable severity.**  Every emitted renderer preserves the canonical severity
    in textual form even though threshold filtering occurs independently of
    rendering.
 
-6. **Redaction precedes presentation encoding when selected.**  Caller-supplied
-   message and tag values are transformed and verified before human punctuation,
-   logfmt quoting and escaping, or ANSI decoration are introduced.
+7. **Redaction precedes presentation encoding when selected by the logger.**
+   Caller-supplied message and tag values are transformed and verified before
+   human punctuation, logfmt quoting and escaping, or ANSI decoration are
+   introduced.
 
-7. **Renderer independence.**  Human and logfmt serialization do not need their
-   own secret-matching semantics because explicit redaction, when requested,
-   occurs before rendering.
+8. **Renderer independence.**  Human and logfmt serialization do not need their
+   own secret-matching semantics because explicit redaction, when requested by the
+   logging call, occurs before rendering.
 
-8. **Machine-oriented non-terminal output.**  The default non-terminal renderer
+9. **Machine-oriented non-terminal output.**  The default non-terminal renderer
    is deterministic logfmt rather than terminal-oriented punctuation or ANSI
    presentation.
 
-9. **No ANSI in logfmt.**  bashlog-owned color never appears in the logfmt
-   renderer.
+10. **No ANSI in logfmt.**  bashlog-owned color never appears in the logfmt
+    renderer.
 
-10. **Final fail-closed verification remains scoped to selected policy.**  A
-    completed sink-bound candidate is checked against the explicitly selected
-    context before emission; unrelated registered contexts are not applied.
+11. **Final fail-closed verification remains scoped to selected logging policy.**
+    A completed sink-bound candidate is checked against the explicitly selected
+    logging context before emission; unrelated registered contexts are not
+    applied.
 
-11. **No new external runtime dependency.**  Renderer selection, rendering, and
+12. **No new external runtime dependency.**  Renderer selection, rendering, and
     emission remain implementable with Bash facilities only.
 
-12. **No implicit syslog dependency.**  The default design requires neither
+13. **No implicit syslog dependency.**  The default design requires neither
     rsyslog nor syslog-ng nor an open syslog port.
 
-13. **Redirection remains meaningful.**  `./script` and `./script 2>run.log` may
+14. **Redirection remains meaningful.**  `./script` and `./script 2>run.log` may
     intentionally choose different textual renderers under `format=auto` because
     the consumer attached to standard error changed.
 
@@ -590,16 +714,20 @@ the runtime and failure boundary beyond the universal standard-error sink.
    representation is the purpose of that mode.
 
 9. bashlog does not promise to discover or automatically redact sensitive data.
-   A developer who does not explicitly select an appropriate context receives
-   ordinary unredacted logging behavior.
+   A developer who neither pre-redacts data nor explicitly selects an appropriate
+   logging context receives ordinary unredacted logging behavior.
 
-10. A selected logging redaction context does not promise to match across logical
+10. Caller-managed redaction does not automatically extend to separate fields
+    added later by the logging call.  A manually redacted message does not imply
+    that tags are redacted.
+
+11. A selected logging redaction context does not promise to match across logical
     field boundaries or against renderer punctuation that does not yet exist when
     primary redaction occurs.
 
-11. Final verification is not promised to be free of conservative false-positive
+12. Final verification is not promised to be free of conservative false-positive
     suppression when renderer-generated syntax itself matches a rule in the
-    explicitly selected context.
+    explicitly selected logging context.
 
 ## Adversary and Failure Model
 
@@ -607,8 +735,10 @@ This decision accounts for:
 
 - a developer who writes the application without knowing its final deployment
   environment;
-- a developer who intentionally chooses whether a particular logging call should
-  use redaction;
+- a developer who intentionally chooses whether a particular value or logging
+  call should use redaction;
+- a caller that handles redaction separately and then passes already-transformed
+  data to the logger;
 - the same script moving from a terminal to systemd, Docker, Podman, cron, CI, or
   an orchestrator without source changes;
 - standard error being redirected for one invocation but not another;
@@ -634,8 +764,8 @@ forwarding, access control, and downstream parsing are outside bashlog's process
 boundary.
 
 The decision also does not protect a logging call from sensitive data that the
-developer chose to emit without selecting redaction.  That is application policy,
-not a redaction-engine failure.
+developer chose to emit without either pre-redacting it or selecting logger-
+managed redaction.  That is application policy, not a redaction-engine failure.
 
 ## Operational Constraints
 
@@ -647,13 +777,19 @@ not a redaction-engine failure.
 - Non-TTY standard error under `auto` MUST select `logfmt`.
 - The canonical severity MUST remain present in human and logfmt output.
 - Severity threshold decisions MUST remain independent of renderer selection.
-- Redaction MUST remain opt-in for logging calls.
+- Redaction MUST remain opt-in.
 - Registering rules MUST NOT create an ambient or automatically applied logging
   context.
+- Callers MUST remain free to invoke `bashlog_redact` before logging without
+  passing a logging context.
 - A logging call without explicit context selection MUST NOT be inspected against
   registered redaction contexts.
-- Primary logging redaction MUST occur on caller-supplied semantic fields before
-  renderer-specific encoding or decoration when a context is explicitly selected.
+- `--context CONTEXT` MUST remain an optional logging-call parameter that selects
+  logger-managed redaction for that call.
+- `--` MUST terminate bashlog logging-option parsing and MUST allow a format string
+  beginning with `-` to be treated as `FORMAT` rather than an option.
+- Primary logger-managed redaction MUST occur on caller-supplied semantic fields
+  before renderer-specific encoding or decoration.
 - The formatted message and each tag MUST be protected independently when a
   logging call selects a redaction context.
 - Severity and bashlog-generated timestamp fields MUST NOT be transformed by the
@@ -664,7 +800,7 @@ not a redaction-engine failure.
 - Logfmt field order and escaping MUST be deterministic and normatively
   specified before implementation is accepted.
 - The completed output MUST receive final non-transforming verification only
-  against the explicitly selected context before emission.
+  against the explicitly selected logging context before emission.
 - Renderer encoding MUST NOT be used as a substitute for primary redaction.
 - bashlog MUST NOT infer Docker, Podman, systemd, journald, OpenRC, Kubernetes,
   Swarm, or another deployment environment for normal renderer selection.
@@ -675,6 +811,18 @@ not a redaction-engine failure.
   review.
 
 ## Considered Alternatives
+
+### Require Logger-Managed Redaction Only
+
+bashlog could require callers to pass `--context CONTEXT` whenever they want to
+log protected data and discourage direct use of `bashlog_redact` as part of a
+logging workflow.
+
+It was rejected because `bashlog_redact` is already a public transform API with a
+useful independent purpose.  Preventing callers from composing that API with an
+ordinary logging call would unnecessarily reduce developer control and would make
+the public interfaces less orthogonal.  The caller-managed and logger-managed
+forms have different but legitimate responsibility boundaries.
 
 ### Automatically Apply Redaction to Every Logging Call
 
@@ -689,8 +837,8 @@ context registration have hidden global consequences.  More fundamentally, it
 would replace an explicit developer decision with library policy.
 
 The project instead provides a strong mechanism that the developer invokes
-explicitly.  Once invoked, the mechanism is fail-closed; until invoked, bashlog
-does not pretend to know that redaction is required.
+explicitly.  Once invoked, the mechanism is fail-closed within that API boundary;
+until invoked, bashlog does not pretend to know that redaction is required.
 
 ### Maintain an Ambient Current Redaction Context
 
@@ -745,10 +893,10 @@ Once caller fields have been redacted before serialization, a second verificatio
 step might appear redundant.
 
 It was rejected because ADR-024's immediate pre-emission fail-closed check is a
-valuable defense in depth when redaction has been explicitly selected.  Renderer-
-owned punctuation or escaping can create new byte sequences even when protected
-fields are clean.  The final check is therefore retained as verification only,
-without reopening transformation.
+valuable defense in depth when logger-managed redaction has been explicitly
+selected.  Renderer-owned punctuation or escaping can create new byte sequences
+even when protected fields are clean.  The final check is therefore retained as
+verification only, without reopening transformation.
 
 ### Always Use Human Rendering
 
@@ -851,20 +999,22 @@ in a terminal and redirecting its standard error may produce different textual
 representations while preserving the same severity, message meaning, tags,
 timestamp policy, explicitly selected redaction policy, and sink.
 
-The developer remains in control of whether redaction is active for a logging
-call.  This means bashlog will intentionally emit unredacted caller data when the
-developer has not selected a context.  That is not a failure of the security
-boundary; no redaction boundary was invoked for that call.  The tradeoff is
+The developer remains in control of whether redaction is active and how it is
+composed with logging.  A caller may pre-redact a value and then use an ordinary
+logging call, or may pass `--context CONTEXT` and let the logger perform the
+composition.  This means bashlog will intentionally emit unredacted caller data
+when the developer has done neither.  That is not a failure of the security
+boundary; no redaction boundary was invoked for that data.  The tradeoff is
 accepted because hidden application policy would be more surprising and would
 undermine the project's explicitness and agency principles.
 
-The redaction architecture also becomes cleaner when invoked.  Application-
-controlled data is protected before presentation begins, so human formatting,
-logfmt quoting, and future renderers do not need to become secret-aware.  This
-changes the logging pipeline's use of redaction from the first implementation's
-complete-rendered-candidate transformation, so the change must be reflected
-explicitly in the public specification, tests, and Doxygen contracts when these
-proposed decisions are ratified.
+The redaction architecture also becomes cleaner when logger-managed redaction is
+invoked.  Application-controlled data is protected before presentation begins,
+so human formatting, logfmt quoting, and future renderers do not need to become
+secret-aware.  This changes the logging pipeline's use of redaction from the first
+implementation's complete-rendered-candidate transformation, so the change must
+be reflected explicitly in the public specification, tests, and Doxygen contracts
+when these proposed decisions are ratified.
 
 The final verification boundary remains conservative for calls that select a
 context.  It may suppress a record when renderer-generated syntax happens to
@@ -895,8 +1045,8 @@ This decision extends:
 
 The developer-owned context-selection rule is not new architecture invented by
 this ADR.  It preserves ADR-018 and the initial logging API's existing explicit
-`--context CONTEXT` model while adapting the transformation ordering for multiple
-renderers.
+`--context CONTEXT` model while documenting that the standalone `bashlog_redact`
+API remains an equally valid caller-controlled composition path.
 
 The logical-record ordering follows the same separation-of-concerns principle:
 application data is transformed according to explicitly selected security policy
@@ -923,12 +1073,12 @@ The following earlier principles remain in force:
 - all bashlog-provided logging helpers converge through one security-sensitive
   pipeline;
 - redaction remains opt-in and context selection remains explicit;
-- an explicitly selected redaction context creates a fail-closed logging
-  obligation;
+- callers may independently invoke `bashlog_redact` before logging;
+- an explicitly selected logging context creates a fail-closed logging obligation;
 - rule ordering and matcher semantics remain those defined by ADR-021 through
   ADR-023;
 - the completed sink-bound candidate receives non-transforming final verification
-  against the selected context before emission;
+  against the selected logging context before emission;
 - no iterative fixed-point repair is introduced;
 - safe diagnostic behavior remains governed by ADR-024.
 
@@ -938,9 +1088,16 @@ developer invokes it explicitly.
 
 ## Open Questions and Follow-Ups
 
-- The normative specification must define exact per-field logging redaction and
-  the transition from the current complete-candidate implementation while
-  preserving explicit `--context` selection.
+- The normative specification must define exact per-field logger-managed
+  redaction and the transition from the current complete-candidate implementation
+  while preserving both explicit redaction workflows.
+- The normative specification should include examples of caller-managed
+  `bashlog_redact` composition, logger-managed `--context CONTEXT`, and `--`
+  option termination.
+- Tests must demonstrate that `bashlog_info "This is an info message."` remains a
+  valid ordinary call with no mandatory options or delimiter.
+- Tests must demonstrate that a leading-hyphen format string can be passed after
+  `--` without being interpreted as a logging option.
 - Feasibility tests must establish the exact pure-Bash quoting and escaping
   algorithm for the bashlog logfmt profile on Bash 4.3.
 - Compatibility fixtures should be parsed by one or more established logfmt
