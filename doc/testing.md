@@ -12,9 +12,10 @@ actually violated.
 
 ## Active Contract Suite
 
-The active bashlog public contract is implemented under `tests/contract/`.  These
-tests are derived from the Accepted `doc/bashlog-spec.md` and ADR-013 through
-ADR-024.
+The active public contract is implemented under `tests/contract/`.  These tests
+are derived from the Accepted `doc/bashlog-spec.md` and the governing ADR corpus,
+including ADR-025 through ADR-027 for presentation, adaptive rendering, and
+severity-token styles.
 
 The Makefile runs every `tests/contract/*.bats` file against all three generated
 artifacts:
@@ -25,57 +26,76 @@ dist/bashlog.bash
 dist/bashlog.min.bash
 ```
 
-At the time the initial runtime implementation was established, the suite
-contained 100 focused Bats tests per artifact, for 300 artifact-level results in
-the normal CI matrix.
+Do not document a fixed test count here.  The suite is expected to grow as the
+public contract grows; the invariant is that every artifact receives the same
+complete suite.
 
 See [`tests/contract/README.md`](../tests/contract/README.md) for file-by-file
 organization and fixture conventions.
 
 ## Contract Test Areas
 
-The suite covers:
+The suite covers at least:
 
-- source-time silence;
-- preservation of traps, `set` options, and `shopt` options;
-- caller ownership of generic function and alias names;
-- absence of exported functions;
-- documented namespaced API presence;
-- representative operation with an unusable `PATH` to expose accidental runtime
-  subprocess dependencies;
-- canonical severity names and numeric mappings;
-- default and boundary threshold behavior;
-- exact `level: message` standard-error rendering;
-- standard-output separation;
-- printf-style formatting and logging option parsing;
-- context validation before threshold suppression;
-- threshold suppression before unnecessary printf-style message construction;
-- context creation, append-only policy, destruction, and tombstones;
-- fixed matching including overlap progression, adjacency, literal
-  metacharacters, and empty replacement;
-- exact multibyte fixed values including accented Latin, Cyrillic, CJK, emoji,
-  and combining sequences;
+- source-time silence and preservation of caller traps, shell options, aliases,
+  functions, and `shopt` state;
+- public API presence and absence of generic caller-owned helper names;
+- representative runtime operation with an unusable `PATH`, providing evidence
+  that bashlog does not silently depend on external runtime commands;
+- canonical severity names, numeric mappings, threshold behavior, and
+  printf-style message construction;
+- adaptive `auto` rendering, explicit human/logfmt selection, and deterministic
+  logfmt field ordering and escaping;
+- timestamp, tag, global color, and per-severity style configuration;
+- exact severity-token-only ANSI placement and the invariant that logfmt contains
+  no bashlog-owned ANSI;
+- logging option parsing, including `--context`, repeatable `--tag`, and the `--`
+  option terminator;
+- both caller-managed `bashlog_redact` and logger-managed `--context CONTEXT`
+  redaction workflows;
+- context creation, append-only policy, destruction, tombstones, and unavailable
+  context behavior;
+- fixed matching, including overlap progression, adjacency, literal
+  metacharacters, empty replacement, and exact representable multibyte values;
 - deliberate non-equivalence of distinct Unicode normalization forms;
-- basic glob semantics and extglob rejection independent of ambient `shopt`;
-- case-sensitive glob/ERE behavior even when caller `nocasematch` is enabled;
-- preservation of caller `nocasematch` state;
-- ERE validation, zero-length rejection, literal replacement, and anchored-match
-  location against complete input;
-- deterministic cross-matcher rule ordering;
-- full rendered-record redaction, including severity labels;
-- later replacements reintroducing earlier protected fixed/glob/ERE content;
-- fail-closed final verification;
-- fixed safe diagnostic behavior and suppression when the diagnostic itself
-  violates active policy;
-- negative assertions that protected originals never appear in standard output,
-  standard error, or failure diagnostics;
-- literal treatment of command-substitution and parameter-expansion text in
-  replacements;
-- and successful transformation behavior of `bashlog_redact` without an added
-  newline.
+- glob semantics, extglob rejection, ERE validation, anchored-match location,
+  caller locale preservation, and `nocasematch` isolation;
+- deterministic cross-matcher rule ordering and fail-closed final verification;
+- safe diagnostic behavior when transformation or final verification fails;
+- negative assertions that protected originals never appear in bashlog-controlled
+  standard output, standard error, or failure diagnostics; and
+- equivalent behavior across development, ordinary, and minified artifacts.
 
 This list should grow when implementation or review exposes a genuine missing
 contract, not merely to increase test count.
+
+## Presentation and Redaction Ordering
+
+Tests must preserve the accepted semantic ordering rather than the original
+single-renderer implementation.
+
+For logger-managed redaction:
+
+```text
+validate call/context
+    -> threshold decision
+    -> construct semantic message
+    -> acquire optional metadata
+    -> redact and verify caller-supplied message/tags
+    -> render human or logfmt
+    -> add human presentation styling, if enabled
+    -> final non-transforming verification
+    -> stderr
+```
+
+Primary redaction therefore does not rewrite library-generated severity or
+timestamps.  If library-generated or renderer-generated bytes collide with an
+active rule in the explicitly selected context, final verification suppresses
+the completed record.
+
+Tests whose purpose is severity or redaction rather than presentation should
+select deterministic presentation state explicitly so a renderer choice does not
+obscure the contract being tested.
 
 ## Child Bash Fixture Convention
 
@@ -114,8 +134,8 @@ observable bashlog output.  Where relevant, that includes:
 - standard error;
 - safe failure diagnostics;
 - output from every severity helper;
-- transform-only redaction failures;
-- and cross-rule failure paths.
+- transform-only redaction failures; and
+- cross-rule failure paths.
 
 The suite deliberately includes cases where an earlier replacement succeeds and a
 later rule reintroduces content protected by an earlier rule.  Those cases must
@@ -142,19 +162,18 @@ depend on repository dependency state.
 
 Representative public behavior executes under Bash 4.3 while ADR-002 remains in
 force.  Syntax validation alone is insufficient because runtime semantics around
-arrays, substring operations, pattern matching, regular expressions, and shell
-options are material to the redaction implementation.
+arrays, substring operations, pattern matching, regular expressions, time
+formatting, shell options, and presentation state are material to bashlog.
 
-`tests/contract/compat-bash43.bash` exercises at least:
+`tests/contract/compat-bash43.bash` exercises representative behavior including:
 
-- sourcing;
-- level get/set;
-- ordinary logging;
-- fixed redaction;
-- one glob rule;
-- one ERE rule;
-- context destruction;
-- and one fail-closed final-verification interaction.
+- sourcing and public configuration;
+- level, format, timestamp, color, and severity-style behavior;
+- human and logfmt rendering;
+- logger-managed and standalone redaction;
+- fixed, glob, and ERE matching;
+- context destruction; and
+- fail-closed final verification.
 
 CI and release validation execute that compatibility program against each of the
 three generated artifacts inside a Bash 4.3 container.
@@ -196,9 +215,10 @@ ordinary test tooling.  ADR-014's no-external-command guarantee applies to the
 consumer runtime, not the test harness.
 
 The suite nevertheless launches a Bash process, replaces `PATH` with an unusable
-value, and then exercises representative logging/redaction behavior.  Success
-provides evidence that the runtime did not silently depend on `sed`, `awk`,
-`grep`, `date`, `logger`, hashing tools, or other external commands.
+value, and then exercises representative logging, presentation, timestamp, and
+redaction behavior.  Success provides evidence that the runtime did not silently
+depend on `sed`, `awk`, `grep`, `date`, `logger`, hashing tools, or other external
+commands.
 
 Syntax validation and ShellCheck are part of `make check`, not substitutes for
 behavior tests.  Doxygen generation validates documentation structure and
@@ -211,7 +231,7 @@ The current exceptions correspond to documented architecture:
 
 - SC2053: dynamic right-hand glob matching is the glob engine itself;
 - SC2059: caller-supplied `printf` format strings are part of the public logging
-  API;
+  API; and
 - SC2154: modules consume global state declared in earlier modules in the explicit
   assembly order.
 
