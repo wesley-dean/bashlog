@@ -3,7 +3,7 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 
-PROJECT_NAME ?= template-bash
+PROJECT_NAME ?= bashlog
 ifneq ($(words $(PROJECT_NAME)),1)
 $(error PROJECT_NAME must be one non-empty whitespace-free word)
 endif
@@ -14,11 +14,9 @@ DIST_MIN_SCRIPT := $(DIST_DIR)/$(PROJECT_NAME).min.bash
 DIST_SCRIPTS := $(DIST_DEV_SCRIPT) $(DIST_SCRIPT) $(DIST_MIN_SCRIPT)
 DIST_CHECKSUMS := $(addsuffix .sha256,$(DIST_SCRIPTS))
 LEGACY_CHECKSUMS := $(addsuffix .256,$(DIST_SCRIPTS))
-CORE_SOURCE_FILES := lib/plugin-registry.bash
-PLUGIN_SOURCE_FILES := $(sort $(wildcard lib/plugins/*.bash))
-ENTRYPOINT_SOURCE := src/main.bash
-SOURCE_FILES := $(CORE_SOURCE_FILES) $(PLUGIN_SOURCE_FILES) $(ENTRYPOINT_SOURCE)
-TEST_SCRIPTS := $(sort $(wildcard tests/*.bats))
+CORE_SOURCE_FILES := lib/level.bash lib/redaction-core.bash lib/redaction.bash lib/logging.bash
+SOURCE_FILES := $(CORE_SOURCE_FILES)
+TEST_SCRIPTS := $(sort $(wildcard tests/contract/*.bats))
 TEST_RESULTS_DIR := test-results
 
 VENDOR_DIR := vendor
@@ -32,7 +30,7 @@ DOXYGEN_BASH_FILTER := $(VENDOR_DIR)/doxygen-bash.awk
 REFERENCE_DOC_DIR := doc/reference
 
 VERSION ?= 0.0.0-dev
-BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"; if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [[ -n "$$(git status --porcelain --untracked-files=normal -- Makefile dependencies.txt src lib 2>/dev/null)" ]]; then printf '%s-dirty' "$$commit"; else printf '%s' "$$commit"; fi)
+BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || printf 'unknown')"; if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [[ -n "$$(git status --porcelain --untracked-files=normal -- Makefile dependencies.txt lib 2>/dev/null)" ]]; then printf '%s-dirty' "$$commit"; else printf '%s' "$$commit"; fi)
 BUILD_DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
 SHFMT_ARGUMENTS := -i 2 -bn -ci -sr -kp
 
@@ -62,13 +60,11 @@ $(DIST_DEV_SCRIPT): FORCE $(SOURCE_FILES)
 		printf '%s\n' '# Build date: $(BUILD_DATE)'; \
 		printf '%s\n' '# Build commit: $(BUILD_COMMIT)'; \
 		printf '%s\n' '# Core source: $(CORE_SOURCE_FILES)'; \
-		printf '%s\n' '# Discovered plugins: $(PLUGIN_SOURCE_FILES)'; \
-		printf '%s\n' '# Entrypoint: $(ENTRYPOINT_SOURCE)'; \
 		printf '\n'; \
-		printf 'BASH_STARTER_PROJECT_NAME=%q\n' "$(PROJECT_NAME)"; \
-		printf 'BASH_STARTER_VERSION=%q\n' "$(VERSION)"; \
-		printf 'BASH_STARTER_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
-		printf 'BASH_STARTER_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
+		printf 'BASHLOG_PROJECT_NAME=%q\n' "$(PROJECT_NAME)"; \
+		printf 'BASHLOG_VERSION=%q\n' "$(VERSION)"; \
+		printf 'BASHLOG_BUILD_DATE=%q\n' "$(BUILD_DATE)"; \
+		printf 'BASHLOG_BUILD_COMMIT=%q\n' "$(BUILD_COMMIT)"; \
 		printf '\n'; \
 		cat $(SOURCE_FILES); \
 	} >"$@.tmp"
@@ -107,14 +103,14 @@ check:
 format:
 	shfmt $(SHFMT_ARGUMENTS) -w $(SOURCE_FILES)
 
-## Run the behavior suite against every generated artifact flavor.
+## Run the accepted behavior suite against every generated artifact flavor.
 test: build
-	@set -e; for artifact in $(DIST_SCRIPTS); do printf 'Testing %s\n' "$$artifact"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats $(TEST_SCRIPTS); done
+	@set -e; for artifact in $(DIST_SCRIPTS); do printf 'Testing %s\n' "$$artifact"; BASHLOG_ARTIFACT="$${PWD}/$$artifact" bats $(TEST_SCRIPTS); done
 
 ## Run every artifact flavor and emit one JUnit report per flavor.
 test-report: build
 	@mkdir -p "$(TEST_RESULTS_DIR)"
-	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASH_STARTER_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
+	@set -e; for entry in 'development|$(DIST_DEV_SCRIPT)' 'stripped|$(DIST_SCRIPT)' 'minified|$(DIST_MIN_SCRIPT)'; do label="$${entry%%|*}"; artifact="$${entry#*|}"; BASHLOG_ARTIFACT="$${PWD}/$$artifact" bats --formatter junit $(TEST_SCRIPTS) >"$(TEST_RESULTS_DIR)/bats-$${label}.xml"; done
 
 FORCE:
 
@@ -150,7 +146,7 @@ docs:
 	@test -f "$(DOXYGEN_BASH_FILTER)" || { printf '%s\n' 'Missing documentation dependency vendor/doxygen-bash.awk; run make deps or make all' >&2; exit 1; }
 	$(MAKE) --no-print-directory docs-clean
 	chmod 0755 "$(DOXYGEN_BASH_FILTER)"
-	BASH_STARTER_DOXYGEN_PROJECT_NAME="$(PROJECT_NAME)" doxygen Doxyfile
+	BASHLOG_DOXYGEN_PROJECT_NAME="$(PROJECT_NAME)" doxygen Doxyfile
 
 ## Remove generated reference documentation.
 docs-clean:
