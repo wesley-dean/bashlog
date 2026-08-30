@@ -3,19 +3,20 @@
 bashlog is a sourceable pure-Bash logging library designed around explicit,
 fail-closed redaction of caller-registered sensitive values and patterns.
 
-The project is currently in **pre-implementation design**.  Its architecture and
-public contract are being documented before runtime implementation, tests, and a
-first stable release.  The promises below describe the contract bashlog is being
-designed and tested to make; they must not be mistaken for already-shipped
-behavior until implementation and tests exist.
+The project is currently in **pre-implementation development**.  Its architecture
+and normative public contract are accepted; runtime implementation, activated
+contract tests, and the first stable release remain to be completed.  The
+promises below therefore describe the accepted contract the implementation must
+satisfy and must not be mistaken for already-shipped runtime behavior until
+implementation and tests demonstrate conformance.
 
-The design targets Bash 4.3 or newer and deliberately favors explicit,
+The accepted design targets Bash 4.3 or newer and deliberately favors explicit,
 inspectable behavior over cleverness, implicit shell state, or broad claims that
 the Bash runtime cannot support.
 
-## What bashlog Is Intended to Promise
+## What the Accepted Contract Promises
 
-Once implemented according to the current architecture, bashlog will make the
+Once implemented in conformance with the accepted architecture, bashlog makes the
 following concrete promises.
 
 - **Sourcing is non-invasive.**  Loading bashlog does not install traps, change
@@ -89,14 +90,14 @@ The project will not obscure internal variables and call that privacy.
 
 ## Trust Model
 
-bashlog is intended to be trustworthy because its behavior is reviewable, not
-because consumers are asked to accept a generic security assertion.
+bashlog is intended to earn trust through reviewable behavior, not by asking
+consumers to accept a generic security assertion.
 
 The design makes the following evidence available:
 
 - verbose architectural decisions with explicit promises, non-promises, rejected
   alternatives, and failure models;
-- a normative public behavior specification;
+- an accepted normative public behavior specification;
 - exact `bash-doxygen`-compatible source documentation beside implementation;
 - a security-critical path written as direct Bash rather than generated or
   obscured code;
@@ -108,7 +109,7 @@ The design makes the following evidence available:
 See [`doc/decisions.md`](doc/decisions.md) for the concise decision map and
 [`doc/adr/`](doc/adr/) for the complete architectural reasoning.
 
-## Proposed Initial API
+## Accepted Initial API
 
 The initial public API is intentionally small:
 
@@ -131,16 +132,17 @@ bashlog_redaction_context_destroy
 bashlog_redact
 ```
 
-The full proposed contract, including arguments, return statuses, severity
+The full accepted contract, including arguments, return statuses, severity
 thresholds, stream behavior, matcher semantics, and failure diagnostics, is in
 [`doc/bashlog-spec.md`](doc/bashlog-spec.md).
 
-That specification is currently marked **Draft** while the corresponding bashlog
-ADRs remain Proposed and implementation has not yet been written.
+That specification is normative for implementation.  The current
+starter-derived runtime does not yet implement the API, so specification
+acceptance must not be represented as runtime conformance.
 
 ## Basic Logging
 
-The proposed logging interface uses conventional `printf`-style construction:
+The accepted logging interface uses conventional `printf`-style construction:
 
 ```bash
 bashlog_info 'application started'
@@ -188,7 +190,7 @@ bashlog uses the conventional eight syslog severity levels:
 | 6 | `info` | `bashlog_info` |
 | 7 | `debug` | `bashlog_debug` |
 
-The proposed default threshold is `info`.  A message is eligible for output when
+The accepted default threshold is `info`.  A message is eligible for output when
 its severity number is less than or equal to the active threshold.
 
 ```bash
@@ -239,7 +241,7 @@ and then choose its own exit behavior.
 
 Redaction is organized into named contexts.
 
-A context has the proposed lifecycle:
+A context has the accepted lifecycle:
 
 ```text
 unseen -> active -> destroyed
@@ -265,7 +267,7 @@ active references as far as the implementation can intentionally control; it is
 
 ## Registering Redaction Rules
 
-The proposed registration interface is:
+The accepted registration interface is:
 
 ```text
 bashlog_redaction_add CONTEXT MATCHER PATTERN REPLACEMENT
@@ -329,7 +331,7 @@ bashlog_info --context auth \
   "${password}"
 ```
 
-The proposed visible result is:
+The accepted visible result is:
 
 ```text
 info: authentication failed for password=[REDACTED PASSWORD]
@@ -405,7 +407,7 @@ A redaction failure does not echo the original message, failed candidate,
 pattern, replacement, or secret-bearing rule state merely to explain what went
 wrong.
 
-The proposed fixed diagnostic candidate is:
+The accepted fixed diagnostic candidate is:
 
 ```text
 bashlog: message suppressed
@@ -420,7 +422,7 @@ obligation.
 
 ## Transform Without Logging
 
-For caller-owned integrations, the proposed API includes:
+For caller-owned integrations, the accepted API includes:
 
 ```text
 bashlog_redact CONTEXT STRING
@@ -511,7 +513,7 @@ The hierarchy is:
 - `doc/decisions.md`: concise one-to-three-sentence architectural decision map;
 - `doc/adr/*.md`: full context, reasoning, promises, non-promises, adversary and
   failure models, rejected alternatives, consequences, and follow-ups;
-- `doc/bashlog-spec.md`: normative current public behavior;
+- `doc/bashlog-spec.md`: accepted normative public behavior;
 - Doxygen comments: implementation-level contracts beside maintained Bash source;
 - Bats tests: executable evidence for observable guarantees and invariants.
 
@@ -574,8 +576,9 @@ covering sourceable-library scope, runtime purity, API namespacing, modular sour
 assembly, the logging pipeline, redaction trust boundaries, auditability, context
 lifecycle, matcher semantics, and fail-closed final verification.
 
-Those bashlog-specific ADRs currently remain **Proposed**.  Their presence in the
-repository and this README does not silently change their status.
+Those bashlog-specific ADRs are **Accepted** and govern implementation.  Their
+acceptance records the chosen architecture; the current starter-derived runtime
+still must be replaced and demonstrated against the accepted contract tests.
 
 ## License and Contributions
 
