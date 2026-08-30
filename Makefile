@@ -95,9 +95,18 @@ $(DIST_DIR)/%.bash.sha256: $(DIST_DIR)/%.bash
 checksums: build
 
 ## Validate maintained Bash syntax and run ShellCheck against maintained source.
+##
+## The exclusions below are deliberately scoped to the modules that require
+## them.  SC2053 is the intentional dynamic RHS glob operation in the glob
+## matcher.  SC2154 covers globals assigned by earlier modules in the explicit
+## assembled source order.  SC2059 is the documented caller-supplied printf
+## format string in the public logging API.
 check:
 	@for source in $(SOURCE_FILES); do bash -n "$$source"; done
-	shellcheck $(SOURCE_FILES)
+	shellcheck lib/level.bash
+	shellcheck -e SC2053 lib/redaction-core.bash
+	shellcheck -e SC2154 lib/redaction.bash
+	shellcheck -e SC2059,SC2154 lib/logging.bash
 
 ## Format maintained Bash using the same arguments configured for MegaLinter.
 format:
