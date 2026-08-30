@@ -32,7 +32,7 @@ which representation is chosen.
 - `<project>.min.bash`: the ordinary artifact processed by the pinned
   Bash-Minifier dependency.
 
-Each executable SHALL have a sibling `<artifact>.256` file containing its
+Each executable SHALL have a sibling `<artifact>.sha256` file containing its
 SHA-256 digest and basename.
 
 The build SHALL inject project version, build date, and build commit metadata.
@@ -52,7 +52,7 @@ behavior.
 ## Operational Constraints
 
 - `build` MUST produce `.dev.bash`, `.bash`, and `.min.bash` executables.
-- Every executable MUST have a `.256` SHA-256 companion.
+- Every executable MUST have a `.sha256` SHA-256 companion.
 - Artifacts MUST expose version, build date, and build commit metadata.
 - The `.dev.bash` artifact MUST retain maintained comments and the generated-file
   notice.
