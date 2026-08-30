@@ -8,79 +8,65 @@ Proposed
 
 ## Intent and Documentation Posture
 
-This Architecture Decision Record defines the first additive presentation layer
-above bashlog's implemented minimal `level: message` renderer.  The project has
-now proven the core logging and redaction contract across all generated artifact
-forms and Bash 4.3.  Optional presentation features can therefore be considered
-without using them to conceal uncertainty in the core design.
+This Architecture Decision Record defines the presentation metadata that bashlog
+may add around a log message without expanding the library into a general host-
+inspection framework or weakening its redaction boundary.
 
-The decision favors useful defaults while remaining conservative about redirected
-and service-oriented output.  Presentation features should make logs more useful
-to humans without weakening redaction, expanding the external-command boundary,
-or making the security-critical path difficult to reason about.
+The decision covers three capabilities that were deliberately deferred from the
+first implemented contract:
+
+- Bash-native timestamps;
+- caller-supplied tags or component labels;
+- and severity-aware ANSI color for human-facing output.
+
+ADR-026 separately defines how bashlog chooses between the human and logfmt
+renderers.  This ADR owns the fields and presentation policy shared by those
+renderers rather than the transport or environment-selection model.
 
 ## Context
 
-The first functional bashlog contract deliberately omitted timestamps, tags,
-colors, host metadata, and other presentation features.  That omission made the
-initial logging pipeline small enough to define and test precisely:
+The first functional bashlog contract intentionally emitted only:
 
 ```text
 level: message
 ```
 
-That minimal contract is now implemented.  Several useful capabilities were
-explicitly deferred rather than rejected permanently:
+That made the initial logging and redaction pipeline small enough to define and
+prove precisely.  With that core now implemented, several useful presentation
+features can be added without changing bashlog's narrow purpose.
 
-- severity-aware color for interactive use;
-- caller-supplied tags or component labels;
-- timestamps generated without invoking external `date`;
-- and a controlled amount of configurable rendering decoration.
+The features have different security and compatibility implications.
+Caller-supplied tags are untrusted sink-bound data and must participate in
+redaction.  Timestamps are library-generated metadata, but they still become part
+of the emitted record.  ANSI color is presentation control data and must not
+interfere with matcher semantics or appear in machine-oriented logfmt output.
 
-These features interact with the redaction boundary in different ways.
-Caller-supplied tags are untrusted sink-bound text and therefore must be included
-in redaction.  Timestamps are library-generated metadata but still become part of
-the emitted record.  ANSI color is presentation control data rather than message
-semantics and can interfere with pattern matching if inserted before redaction.
-
-The project therefore needs an explicit ordering model rather than adding each
-feature independently wherever it is easiest to implement.
+The project therefore needs explicit configuration and ordering rather than
+adding presentation bytes opportunistically inside the logger.
 
 ## Decision Drivers
 
-- Preserve the existing plain output form for redirected and non-terminal stderr
-  unless the caller explicitly requests color.
-- Provide a useful interactive default before the first public release rather
-  than requiring every terminal user to discover and enable color manually.
-- Keep all new runtime behavior within Bash 4.3 and the no-external-command
-  guarantee of ADR-014.
-- Ensure caller-supplied tags participate in the same redaction boundary as the
-  message and severity label.
-- Prevent ANSI escape sequences from changing the semantics of fixed, glob, or
-  ERE redaction.
-- Keep configuration explicit and inspectable rather than inferred from a large
-  collection of environment variables.
-- Avoid an arbitrary template language that would introduce another parsing and
-  escaping surface.
-- Keep redirected, CI, service, and persisted logs free of bashlog-owned ANSI
-  decoration by default.
+- Keep all runtime behavior within Bash 4.3 and ADR-014's no-external-command
+  guarantee.
+- Provide a useful interactive default before the first public release.
+- Keep machine-oriented output free of bashlog-owned ANSI decoration.
+- Ensure caller-supplied tags participate in the same redaction obligation as
+  message data.
+- Avoid an arbitrary template language that would add parsing and escaping
+  semantics before concrete use cases justify it.
 - Keep timestamp acquisition late enough that threshold-suppressed messages do
   not perform unnecessary metadata work.
-- Preserve caller locale and shell state while generating metadata.
+- Preserve caller locale, timezone, shell options, and `shopt` state.
+- Keep generated metadata narrowly related to logging rather than inspecting the
+  host for unrelated context.
 
 ## Decision
 
-bashlog SHALL add optional timestamp, tag, and color presentation capabilities.
-Timestamping remains disabled by default and tags remain per-call opt-in.  Color
-SHALL default to terminal-sensitive `auto` mode.
+bashlog SHALL add optional timestamp and tag fields and SHALL add configurable
+severity-aware color for the human renderer.
 
-Therefore, with timestamp `off` and no tags:
-
-- non-terminal standard error SHALL retain the existing `level: message` bytes;
-- terminal standard error MAY include the documented bashlog-owned severity color
-  decoration; and
-- callers that require byte-for-byte plain terminal output MAY select color mode
-  `never` explicitly.
+Timestamping remains disabled by default.  Tags remain explicit per logging call.
+Color defaults to terminal-sensitive `auto` behavior.
 
 ### Timestamp Configuration
 
@@ -101,31 +87,43 @@ local
 
 The default SHALL be `off`.
 
-When `utc` is selected, bashlog SHALL prepend a Bash-native current-time value in
+When `utc` is selected, bashlog SHALL generate a Bash-native current-time value in
 this form:
 
 ```text
-[YYYY-MM-DDTHH:MM:SSZ]
+YYYY-MM-DDTHH:MM:SSZ
 ```
 
-When `local` is selected, bashlog SHALL prepend a Bash-native local-time value in
+When `local` is selected, bashlog SHALL generate a Bash-native local-time value in
 this form:
 
 ```text
-[YYYY-MM-DDTHH:MM:SS+HHMM]
+YYYY-MM-DDTHH:MM:SS+HHMM
 ```
 
-The exact offset is produced by the platform's `strftime` implementation through
-Bash builtin `printf`; the initial contract does not require insertion of a colon
-into the numeric offset.
+The human renderer SHALL display an enabled timestamp in brackets before the
+severity:
+
+```text
+[2026-08-30T18:40:00Z] warning: connection delayed
+```
+
+The logfmt renderer defined by ADR-026 SHALL represent the same logical timestamp
+as the `ts` field:
+
+```text
+ts=2026-08-30T18:40:00Z level=warning msg="connection delayed"
+```
 
 Timestamp generation SHALL use Bash builtin time formatting and SHALL NOT invoke
-`date` or another external program.  UTC formatting MAY use a function-local
-`TZ` value when required and MUST restore or preserve caller-visible timezone
-state after the operation.
+`date` or another external program.  UTC formatting MAY use function-local
+`TZ` state when required, but caller-visible timezone state MUST be preserved.
 
-Timestamp acquisition SHALL occur only after syntax, explicitly requested
-context validity, and threshold eligibility have been established.
+Timestamp acquisition SHALL occur only after API syntax, explicitly requested
+redaction context validity, and severity threshold eligibility have been
+established.
+
+The initial timestamp contract does not include fractional seconds.
 
 ### Per-Call Tags
 
@@ -137,37 +135,38 @@ Every public logging call SHALL accept zero or more repeatable:
 
 options before the `--` terminator and format string.
 
-Tags SHALL be rendered in the exact order supplied by the caller.  Each tag SHALL
-be rendered as:
+Tags SHALL preserve exact argument order.
+
+The initial tag grammar SHALL be an explicitly ASCII token:
 
 ```text
-[TAG]
+[A-Za-z0-9_.:-]+
 ```
 
-For example:
+An empty tag, whitespace, brackets, control characters, or characters outside
+that grammar SHALL be rejected with public usage status `64`.
+
+The human renderer SHALL display tags in brackets between severity and the colon:
 
 ```text
 info [database]: connected
 warning [api] [retry]: request delayed
 ```
 
-The initial tag grammar SHALL be a deliberately boring ASCII token:
+The logfmt renderer SHALL represent each tag as a repeated `tag` key in caller
+order:
 
 ```text
-[A-Za-z0-9_.:-]+
+level=warning tag=api tag=retry msg="request delayed"
 ```
 
-An empty tag, a tag containing whitespace, a tag containing brackets, or a tag
-containing other characters outside this grammar SHALL be rejected with public
-usage status `64`.
-
-Tags are caller-supplied sink-bound data.  They SHALL be incorporated into the
-plain semantic record before redaction transformation and final verification.
-A redaction context may therefore transform or suppress content appearing in a
-tag exactly as it may transform or suppress message or severity text.
+Tags are caller-supplied sink-bound data.  Renderer selection and serialization
+MUST NOT allow a tag to bypass the selected redaction context.  ADR-026 defines
+the stronger cross-renderer invariant that reversible serialization cannot be
+used as a substitute for redaction.
 
 The initial extension SHALL NOT add ambient global tags.  Applications that want
-a constant component label MAY define a caller-owned wrapper:
+a constant component label MAY define caller-owned wrappers, for example:
 
 ```bash
 db_info() {
@@ -175,26 +174,8 @@ db_info() {
 }
 ```
 
-This preserves the caller-owned convenience-wrapper model of ADR-015 and avoids
+This preserves ADR-015's caller-owned convenience-wrapper model and avoids
 another mutable global configuration surface.
-
-### Plain Semantic Rendering
-
-Before color or other sink decoration, the rendered record SHALL use these forms:
-
-```text
-LEVEL: MESSAGE
-LEVEL [TAG] [TAG]: MESSAGE
-[TIMESTAMP] LEVEL: MESSAGE
-[TIMESTAMP] LEVEL [TAG] [TAG]: MESSAGE
-```
-
-Only enabled fields appear.
-
-The timestamp, canonical severity, tags, punctuation, and message together form
-the semantic sink-bound candidate.  When a redaction context is selected, this
-complete plain candidate SHALL pass through the existing ordered transformation
-and final-verification boundary.
 
 ### Color Configuration
 
@@ -215,73 +196,101 @@ always
 
 The default SHALL be `auto`.
 
-`never` SHALL emit no bashlog-owned ANSI color sequences.
+Color is a property of the human renderer only.  The logfmt renderer SHALL never
+contain bashlog-owned ANSI SGR sequences, even if color mode is `always`.
 
-`auto` SHALL color only when standard error is currently a terminal according to
-Bash's `[[ -t 2 ]]` test.  bashlog SHALL NOT invoke `tput`, `tty`, `test`, or any
-external command to determine terminal state.
+Within the human renderer:
 
-`always` SHALL apply color regardless of whether standard error is a terminal.
-This mode is intentionally explicit; callers choosing it accept that redirected
-or persisted output may contain ANSI SGR bytes.
+- `never` SHALL emit no bashlog-owned ANSI color sequences;
+- `auto` SHALL color only when standard error is currently a terminal according
+  to Bash's `[[ -t 2 ]]` test;
+- `always` SHALL request color regardless of whether human output is redirected.
+
+bashlog SHALL NOT invoke `tput`, `tty`, `test`, or another external command to
+determine whether color should be used.
 
 Color SHALL be severity-aware and implemented with library-owned ANSI SGR
-constants.  The exact initial palette belongs in `doc/bashlog-spec.md` when this
-ADR is accepted so that tests can treat it as observable public behavior.
+constants.  The exact initial palette belongs in `doc/bashlog-spec.md` when these
+proposed decisions are ratified so tests can treat it as observable public
+behavior.
 
-Color SHALL be a presentation decoration, not part of matcher semantics.  The
-plain semantic record SHALL be redacted and verified before ANSI decoration is
-added.  If an active redaction context is selected, the decorated candidate SHALL
-then be verified again before emission so library-added control bytes cannot
-silently create a final candidate that violates an active rule.
+Color is presentation decoration rather than message semantics.  ANSI bytes MUST
+NOT be introduced at a point where they can prevent a registered redaction rule
+from matching semantic caller data.  Context-protected human output SHALL also be
+subject to an appropriate final non-transforming verification after bashlog-owned
+presentation decoration is complete.
 
-The second verification is intentionally non-transforming.  bashlog SHALL NOT
-rerun the transformation rule set after adding presentation decoration.
+### Default Presentation Combination
+
+Together with ADR-026, the intended default configuration is:
+
+```text
+format=auto
+color=auto
+timestamp=off
+```
+
+Therefore:
+
+```text
+interactive terminal:
+warning [database]: connection delayed
+```
+
+with severity-aware color applied to the documented human portion, while:
+
+```text
+non-terminal stderr:
+level=warning tag=database msg="connection delayed"
+```
+
+contains no bashlog-owned ANSI color.
+
+The developer does not need to know whether non-terminal standard error is being
+captured by systemd, Docker, Podman, cron, CI, an orchestrator, a redirected file,
+or another consumer.
 
 ### Arbitrary Render Templates
 
-The initial extension SHALL NOT provide a caller-defined interpolation/template
+This tranche SHALL NOT provide a caller-defined interpolation or template
 language such as:
 
 ```text
 %timestamp %level %tag %message
 ```
 
-The supported decorations themselves are configurable, but their ordering and
-punctuation remain library-defined.  This keeps the redaction boundary, output
-shape, and parsing rules finite and inspectable.
+The supported fields and renderer modes are configurable, but their ordering,
+keys, punctuation, and escaping remain library-defined.
 
 A later ADR may add named layouts or a template language if concrete use cases
-justify the additional compatibility and security surface.
+justify the additional compatibility, parsing, and security surface.
 
 ## Promises
 
-1. **Redirect-safe default.**  With timestamp `off`, color `auto`, and no tags,
-   non-terminal stderr retains the existing plain `level: message` output.
+1. **Useful interactive color by default.**  Human output on a terminal uses
+   terminal-sensitive severity color without requiring caller configuration.
 
-2. **Useful interactive default.**  When stderr is a terminal, the default `auto`
-   mode may add the documented severity-aware ANSI color without requiring caller
-   configuration.
+2. **No ANSI in machine output.**  The logfmt renderer never contains
+   bashlog-owned color sequences.
 
 3. **No external metadata helper.**  Timestamp generation and terminal detection
    use Bash facilities only.
 
-4. **Tags are redacted as sink-bound data.**  Caller-supplied tags cannot bypass
-   the complete-record redaction boundary.
+4. **Tags remain protected data.**  Caller-supplied tags cannot escape the
+   selected redaction obligation merely because they are metadata rather than
+   message text.
 
-5. **Color does not alter redaction matching semantics.**  Redaction transforms
-   the plain semantic record before ANSI bytes are introduced.
+5. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
+   severity policy does not acquire a timestamp, construct the message, encode
+   tags, or add presentation decoration.
 
-6. **Decorated protected output is verified again.**  When a context is active,
-   the final decorated candidate is checked before emission.
-
-7. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
-   severity policy does not acquire a timestamp, construct the message, or add
-   presentation decoration.
-
-8. **Caller shell state is preserved.**  Timestamp and terminal handling do not
+6. **Caller shell state is preserved.**  Timestamp and terminal handling do not
    leave caller `TZ`, shell options, `shopt` options, or other caller-owned state
    changed.
+
+7. **No ambient host metadata expansion.**  Adding timestamps and tags does not
+   authorize automatic hostname, PID, Git, container, service, or orchestration
+   discovery.
 
 ## Non-Promises
 
@@ -289,28 +298,28 @@ justify the additional compatibility and security surface.
    accessibility settings.  bashlog emits standard SGR requests; presentation is
    controlled by the terminal.
 
-2. `auto` does not attempt to infer whether a non-terminal consumer understands
-   ANSI escapes.  It is intentionally based on `[[ -t 2 ]]` only.
+2. `auto` color does not attempt to infer whether a non-terminal consumer happens
+   to understand ANSI.  Under the adaptive rendering model, non-terminal output
+   is logfmt and therefore contains no bashlog-owned ANSI regardless.
 
-3. Timestamp modes do not provide sub-second precision in the initial extension.
+3. Timestamp modes do not provide sub-second precision in this tranche.
 
 4. Local timestamp formatting inherits the platform's timezone database and
    `strftime` behavior.  bashlog does not become a timezone database.
 
-5. Tags are not arbitrary structured metadata.  They are ordered display tokens
-   with a constrained grammar.
+5. Tags are not arbitrary structured metadata.  They are ordered, constrained
+   caller labels.
 
-6. bashlog does not promise that caller message content lacks ANSI or other
-   control characters.  The existing contract continues to leave caller message
-   normalization outside bashlog.
+6. bashlog does not promise that caller message content itself lacks ANSI or
+   other control characters.  Renderer encoding and log-injection behavior are
+   governed separately by the selected renderer's contract.
 
-7. The project does not promise a caller-defined rendering language in this
-   tranche.
+7. The project does not promise a caller-defined rendering language.
 
-8. Existing terminal output is not promised to remain byte-for-byte identical
-   after this feature is adopted, because the selected default intentionally
-   adds color when stderr is a terminal.  Callers requiring plain terminal bytes
-   can select `never`.
+8. Interactive terminal output is not promised to remain byte-for-byte identical
+   to the first implementation because the selected default intentionally adds
+   color before the first public release.  Callers requiring plain human output
+   can select `color=never`.
 
 ## Adversary and Failure Model
 
@@ -318,148 +327,134 @@ This decision accounts for:
 
 - a tag containing characters intended to break visual field boundaries;
 - a protected value appearing in a tag rather than the message body;
-- a redaction rule that intentionally or accidentally matches generated
-  timestamp text;
-- a redaction rule that matches a bashlog-owned ANSI byte sequence after
-  decoration;
-- an application running with standard error redirected to a file or journal;
-- a threshold-suppressed call that contains expensive or invalid formatting
-  arguments;
+- a redaction rule that interacts with generated timestamp text;
+- a redaction rule that interacts with bashlog-owned ANSI bytes;
+- an application whose standard error is a terminal for one invocation and
+  redirected for another;
+- a threshold-suppressed call that should avoid unnecessary metadata work;
 - caller locale or timezone state that must not be left changed;
-- and future maintainers tempted to insert color before the security boundary
-  because it is visually convenient.
+- and future maintainers tempted to introduce presentation bytes before the
+  security boundary because doing so appears visually convenient.
 
-The decision does not attempt to sanitize arbitrary control characters already
-present in caller message data.  That remains a separately documented limitation
-of the first public contract.
+The decision does not sanitize arbitrary caller message content by itself.  The
+selected renderer and redaction pipeline define the exact behavior of message
+serialization.
 
 ## Operational Constraints
 
-- Timestamp default MUST be `off`.
-- Color default MUST be `auto`.
+- Timestamp mode MUST default to `off`.
+- Color mode MUST default to `auto`.
 - Tags MUST be explicit per logging call and MAY be repeated.
-- Tags MUST match `[A-Za-z0-9_.:-]+` in an explicitly ASCII interpretation.
-- Plain semantic rendering MUST occur before redaction.
-- Timestamp and tag text MUST participate in redaction and final verification.
-- ANSI color MUST NOT be inserted before the first redaction/final-verification
-  boundary.
-- Context-protected decorated output MUST receive a second non-transforming final
-  verification before emission.
-- `auto` color MUST use Bash terminal testing rather than an external command.
-- `auto` color MUST emit no bashlog-owned ANSI sequences when stderr is not a
-  terminal.
+- Tags MUST match `[A-Za-z0-9_.:-]+` using an explicitly ASCII interpretation.
+- Timestamp and tag data MUST participate in the selected redaction obligation.
+- Color MUST apply only to the human renderer.
+- Logfmt output MUST contain no bashlog-owned ANSI color sequences.
+- `auto` human color MUST use Bash `[[ -t 2 ]]` rather than an external command.
 - Timestamp generation MUST use Bash builtin facilities and MUST NOT invoke
   external `date`.
 - New configuration setters MUST validate atomically and leave prior state
   unchanged on invalid input.
 - No arbitrary caller-controlled render template is introduced by this ADR.
+- Presentation serialization MUST NOT weaken the fail-closed redaction boundary.
 
 ## Considered Alternatives
 
-### Default to `never`
+### Default Color to `never`
 
-This would preserve byte-for-byte terminal output across an upgrade and make all
-color explicitly opt-in.
+This would preserve byte-for-byte terminal output and make color explicitly
+opt-in.
 
-It was rejected because this work is occurring before the first public release,
-when the project can still choose the more useful default without breaking an
-established stable consumer contract.  `auto` gives interactive users useful
-severity color while continuing to emit plain bytes when stderr is redirected.
-Callers that require plain terminal output have an explicit `never` mode.
+It was rejected because this decision is being made before the first public
+release.  `auto` gives interactive users useful severity color while avoiding
+ANSI in the machine-oriented logfmt renderer.  Callers that need plain human
+bytes retain an explicit `never` mode.
 
-### Default to `always`
+### Default Color to `always`
 
-This would make presentation deterministic regardless of file-descriptor type and
-would guarantee that terminal users see color.
+This would guarantee color whenever the human renderer is used.
 
-It was rejected because ANSI bytes would then appear in files, CI captures,
-service logs, and other non-terminal sinks unless every caller remembered to turn
-color off.  That is a poor library default.
+It was rejected because explicitly forced human output may be redirected to a
+file or another non-terminal consumer.  ANSI should not appear there unless the
+caller deliberately chooses `always`.
 
-### Color Only the Severity Word Before Redaction
+### Allow Color in Logfmt
 
-Coloring the level token before redaction would make implementation straightforward
-because the token location is known before transformation.
+An explicit `always` setting could be interpreted as applying ANSI regardless of
+renderer.
 
-It was rejected because ANSI bytes inserted into the semantic candidate would
-change fixed/glob/ERE matching over the complete record and could prevent a rule
-from matching text it protected before color was enabled.
+It was rejected because logfmt exists to provide deterministic machine-oriented
+text.  ANSI control bytes undermine that goal.  Color configuration therefore
+has intentionally renderer-scoped semantics.
 
 ### Allow Arbitrary Tag Text
 
 Treating tags as unrestricted strings would maximize caller flexibility.
 
-It was rejected because tags are presentation delimiters, not a second message
-body.  A small ASCII token grammar keeps the rendering unambiguous.  Arbitrary
-text belongs in the message and can still be protected by redaction.
+It was rejected because tags are metadata tokens, not a second message body.  A
+small ASCII grammar keeps both human and logfmt rendering unambiguous.  Arbitrary
+text belongs in the message.
 
 ### Add Global Mutable Tags
 
-A persistent component/application tag would reduce repetition.
+A persistent application or component tag would reduce repetition.
 
 It was deferred because caller-owned wrapper functions already solve the common
-case without adding mutable global configuration.  If repeated per-call tags
-prove materially burdensome, a later ADR can add a global tag layer with explicit
-override semantics.
+case without another mutable global configuration layer.  A later ADR can add a
+persistent tag model if repeated per-call tags prove materially burdensome.
+
+### Require Callers to Supply Timestamps
+
+This preserves the narrowest possible metadata-acquisition boundary.
+
+It remains a valid caller pattern, but ADR-014 explicitly permits Bash-native time
+metadata if separately adopted.  A standard optional timestamp is sufficiently
+logging-specific, requires no external process, and improves consistency across
+callers.
 
 ### Caller-Defined Render Templates
 
 A template language would provide maximum customization.
 
-It was deferred because it would add parsing, escaping, invalid-template behavior,
-and a larger compatibility surface before concrete requirements justify them.
-Named optional decorations satisfy the current use cases while preserving a
-small, auditable renderer.
-
-### Require Callers to Supply Timestamps
-
-This preserves the narrowest possible acquisition boundary.
-
-It remains a valid caller pattern, but ADR-014 explicitly permits Bash-native time
-metadata if separately adopted.  A standard opt-in timestamp is sufficiently
-logging-specific, requires no external process, and improves consistency across
-callers.
+It was deferred because it introduces parsing, escaping, invalid-template
+behavior, security ordering, and a larger compatibility surface before concrete
+requirements justify them.
 
 ## Consequences
 
-The renderer becomes richer.  Redirected/non-terminal output remains plain by
-default, while interactive stderr gains severity-aware color unless the caller
-selects `never`.  This is an intentional pre-release behavior choice rather than
-an accidental compatibility change.
+The presentation model becomes richer while remaining narrow.  Interactive human
+output gains useful color by default.  Non-terminal output receives no
+bashlog-owned ANSI because ADR-026 selects logfmt there under the default format
+mode.
 
 Implementation will need explicit presentation state, additional option parsing,
-and a second final-verification step for protected output after decoration.
+Bash-native timestamp generation, tag validation, and renderer-aware color
+application.
 
-The second verification is intentional defense in depth.  It slightly increases
-work for protected colored records, but it preserves the simple sink invariant
-that the bytes bashlog ultimately emits have been checked against the selected
-context after all bashlog-owned decoration is complete.
-
-Tests must cover every combination that materially changes the boundary,
-including timestamps with redaction, tags containing protected text, color in
-`never`/`auto`/`always` modes, terminal and redirected standard error, invalid
-tag/configuration input, and post-decoration verification.
+Tests must cover timestamps with redaction, tags containing protected values,
+color in `never`/`auto`/`always` modes, terminal and redirected human output,
+logfmt's unconditional no-color guarantee, invalid configuration, and
+preservation of caller state.
 
 ## Source Lineage
 
 This decision follows ADR-013's permission for narrowly scoped Bash-native
 logging metadata, ADR-014's explicit allowance for Bash builtin time formatting,
-ADR-017's common logging pipeline, and ADR-024's requirement that all sink-bound
-content satisfy the final redaction boundary.
+ADR-015's caller-owned wrapper model, ADR-017's common logging pipeline, and
+ADR-024's fail-closed final output boundary.
 
-It also preserves the project's established preference for explicit
-configuration, caller-owned convenience wrappers, and clean non-terminal output.
+ADR-026 extends this presentation model by defining environment-agnostic standard-
+error transport and adaptive human/logfmt renderer selection.
 
 ## Open Questions and Follow-Ups
 
 - The exact ANSI SGR palette should be fixed in the normative specification when
   this ADR is accepted.
-- Implementation should verify Bash 4.3 behavior for builtin timestamp formatting
-  and function-local `TZ` handling on the compatibility image.
+- Implementation should verify Bash 4.3 builtin timestamp formatting and
+  function-local timezone handling in the compatibility environment.
 - A future need for persistent/global component tags should be demonstrated
-  before adding another mutable configuration layer.
-- Structured logging formats such as JSON remain outside this ADR and would
-  require their own rendering and escaping decision.
+  before another mutable configuration layer is added.
+- Structured fields beyond timestamp, level, tag, and message remain outside this
+  ADR and require explicit review.
 
 ## Related Decisions
 
@@ -471,3 +466,4 @@ configuration, caller-owned convenience wrappers, and clean non-terminal output.
 - ADR-018: Redaction as an Opt-In Security Boundary
 - ADR-019: Readability, Auditability, and Rejection of Obscurity
 - ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
+- ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr Transport
