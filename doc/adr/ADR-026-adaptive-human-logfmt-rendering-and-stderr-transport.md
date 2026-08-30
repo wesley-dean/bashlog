@@ -4,12 +4,12 @@ Date: 2026-08-30
 
 ## Status
 
-Proposed
+Accepted
 
 ## Intent and Documentation Posture
 
-This Architecture Decision Record defines how bashlog should render records when
-the application developer does not know, and often cannot know, whether the same
+This Architecture Decision Record defines how bashlog renders records when the
+application developer does not know, and often cannot know, whether the same
 script will eventually run interactively, from cron, as a systemd service, inside
 a Docker or Podman container, under an orchestrator, in CI, or with standard
 error redirected to another consumer.
@@ -65,22 +65,22 @@ process ancestry, systemd-specific variables, filesystem probes, or external
 commands would expand the runtime boundary and would still be incomplete.  The
 same script may also move between those environments without source changes.
 
-The project therefore should not require application developers to predict their
+The project therefore does not require application developers to predict their
 future deployment environment in order to select a logging transport.
 
-At the same time, the audience for a log line does differ materially depending on
+At the same time, the audience for a log line differs materially depending on
 whether standard error is a terminal.  Human-facing terminal output benefits from
 compact punctuation and optional severity color.  Non-terminal output is more
 likely to be persisted, parsed, searched, shipped, or consumed by another system.
 A deterministic key/value representation is more useful there.
 
 The introduction of more than one renderer also exposes a boundary that was less
-visible in the first implementation.  The current logger formats a complete
-human line and then applies redaction to that rendered string when the caller
-explicitly selects a context.  That is workable while only one renderer exists.
-Once human and logfmt renderers coexist, making redaction depend on presentation
-syntax would force the redaction engine to understand quoting, escaping,
-delimiters, and every future renderer.
+visible in the first implementation.  The first logger formatted a complete
+human line and then applied redaction to that rendered string when the caller
+explicitly selected a context.  That was workable while only one renderer
+existed.  Once human and logfmt renderers coexist, making redaction depend on
+presentation syntax would force the redaction engine to understand quoting,
+escaping, delimiters, and every future renderer.
 
 That is the wrong dependency direction.  The application supplies semantic data.
 If the developer explicitly requests redaction for the call, bashlog protects
@@ -183,7 +183,7 @@ problem.
 bashlog SHALL continue to use standard error as its normal and universal logging
 sink.
 
-bashlog SHALL add a rendering mode with the public configuration interface:
+bashlog SHALL provide a rendering mode with the public configuration interface:
 
 ```text
 bashlog_format_get
@@ -267,8 +267,8 @@ and later inspection.
 
 ### Redaction Remains Explicit and Developer-Owned
 
-This ADR SHALL preserve ADR-018's opt-in redaction boundary and the initial public
-logging contract's explicit `--context CONTEXT` selection model.
+This ADR SHALL preserve ADR-018's opt-in redaction boundary and the public logging
+contract's explicit `--context CONTEXT` selection model.
 
 bashlog SHALL NOT:
 
@@ -468,7 +468,8 @@ change the standalone transform API's meaning or make that API automatic.
 ### Human Renderer
 
 The human renderer SHALL remain compact and human-oriented.  ADR-025 defines its
-optional timestamps, tags, and color behavior.
+optional timestamps, tags, and color behavior, and ADR-027 defines the bounded
+per-severity token style overrides.
 
 Representative forms are:
 
@@ -480,9 +481,9 @@ warning [database]: connection delayed
 
 The canonical lowercase severity name is retained.
 
-Human punctuation is presentation syntax.  When logger-managed redaction is
-selected, that syntax is created only after caller data has passed the primary
-redaction stage.
+Human punctuation and severity styling are presentation syntax.  When
+logger-managed redaction is selected, that syntax is created only after caller
+data has passed the primary redaction stage.
 
 ### Logfmt Renderer
 
@@ -516,10 +517,10 @@ level=warning tag=database msg="connection delayed"
 ts=2026-08-30T18:40:00Z level=error tag=api msg="request failed"
 ```
 
-The specification adopted with this ADR SHALL define exact quoting and escaping
-rules for every representable Bash string accepted as message data.  At minimum,
-spaces, quotes, backslashes, tabs, carriage returns, newlines, empty strings, and
-other supported control bytes require deterministic behavior.
+The normative specification defines exact quoting and escaping rules for every
+representable Bash string accepted as message data, including spaces, quotes,
+backslashes, tabs, carriage returns, newlines, empty strings, and other supported
+control bytes.
 
 When a context is selected on the logging call, quoting and escaping SHALL occur
 only after the semantic field being encoded has satisfied the primary redaction
@@ -531,10 +532,6 @@ provided.  That data may already have been redacted by an earlier explicit
 `bashlog_redact` call, but the renderer does not attempt to determine whether that
 occurred and does not opportunistically redact values during serialization.
 
-The implementation SHALL NOT call the result logfmt-compatible until fixture
-tests demonstrate that representative lines are accepted by established logfmt
-parsers.
-
 Repeated `tag` keys are intentional.  Their occurrence order preserves the
 caller's tag ordering without inventing an array syntax that logfmt does not
 standardize.
@@ -543,7 +540,7 @@ standardize.
 
 Color is a human-presentation feature, not structured log data.
 
-The logfmt renderer SHALL NEVER emit bashlog-owned ANSI color sequences,
+The logfmt renderer SHALL NEVER emit bashlog-owned ANSI color or style sequences,
 regardless of whether standard error happens to be a terminal and regardless of
 whether the configured color preference is `auto` or `always`.
 
@@ -551,8 +548,13 @@ The color modes defined by ADR-025 therefore control the human renderer only.
 Within the human renderer:
 
 - `never` emits no bashlog-owned ANSI color;
-- `auto` uses color only when standard error is a terminal;
-- `always` requests color even when human output is redirected.
+- `auto` uses configured severity styling only when standard error is a terminal;
+- `always` requests configured severity styling even when human output is
+  redirected.
+
+ADR-027 defines the symbolic per-severity foreground color and intensity.  The
+style span is limited to the canonical severity token and reset immediately after
+that token.
 
 This means the default combination:
 
@@ -564,7 +566,7 @@ color=auto
 behaves as follows:
 
 ```text
-interactive terminal  -> human + color
+interactive terminal  -> human + severity-token styling
 non-terminal stderr    -> logfmt + no color
 ```
 
@@ -829,7 +831,7 @@ application policy, not a redaction-engine failure.
   record.
 - Logfmt output MUST contain no bashlog-owned ANSI color sequences.
 - Logfmt field order and escaping MUST be deterministic and normatively
-  specified before implementation is accepted.
+  specified.
 - The completed output MUST receive final non-transforming verification only
   against the explicitly selected logging context before emission.
 - Renderer encoding MUST NOT be used as a substitute for primary redaction.
@@ -896,9 +898,9 @@ choice visible where the logging operation occurs.
 
 ### Redact the Serialized Logfmt Line
 
-The existing single-renderer implementation redacts a complete rendered human
+The original single-renderer implementation redacted a complete rendered human
 candidate, so applying the same approach after logfmt serialization initially
-appears consistent.
+appeared consistent.
 
 It was rejected because logfmt escaping would then become part of secret-matching
 semantics.  A registered value containing quotes, backslashes, newlines, or other
@@ -1038,8 +1040,8 @@ A later structured-output ADR may revisit JSON if actual consumers require it.
 
 ## Consequences
 
-The default behavior becomes intentionally adaptive.  Running a script directly
-in a terminal and redirecting its standard error may produce different textual
+The default behavior is intentionally adaptive.  Running a script directly in a
+terminal and redirecting its standard error may produce different textual
 representations while preserving the same severity, message meaning, tags,
 timestamp policy, explicitly selected redaction policy, and sink.
 
@@ -1047,8 +1049,8 @@ The developer remains in control of whether redaction is active and how it is
 composed with logging.  A caller may pre-redact a value and then use an ordinary
 logging call, or may pass `--context CONTEXT` and let the logger perform the
 composition.  In either case, the developer must first define the applicable
-context and rules.  This means bashlog will intentionally emit unredacted caller
-data when the developer has done neither.  That is not a failure of the security
+context and rules.  This means bashlog intentionally emits unredacted caller data
+when the developer has done neither.  That is not a failure of the security
 boundary; no redaction boundary was invoked for that data.  The tradeoff is
 accepted because hidden application policy would be more surprising and would
 undermine the project's explicitness and agency principles.
@@ -1059,13 +1061,12 @@ to be mundane infrastructure.  bashlog does not solve that risk automatically;
 it gives developers a concrete mechanism and vocabulary for addressing it
 intentionally.
 
-The redaction architecture also becomes cleaner when logger-managed redaction is
-invoked.  Application-controlled data is protected before presentation begins,
-so human formatting, logfmt quoting, and future renderers do not need to become
-secret-aware.  This changes the logging pipeline's use of redaction from the first
-implementation's complete-rendered-candidate transformation, so the change must
-be reflected explicitly in the public specification, tests, and Doxygen contracts
-when these proposed decisions are ratified.
+The redaction architecture is cleaner when logger-managed redaction is invoked.
+Application-controlled data is protected before presentation begins, so human
+formatting, logfmt quoting, and future renderers do not need to become secret-
+aware.  This changed the logging pipeline's use of redaction from the first
+implementation's complete-rendered-candidate transformation and is reflected in
+the public specification, tests, and Doxygen contracts.
 
 The final verification boundary remains conservative for calls that select a
 context.  It may suppress a record when renderer-generated syntax happens to
@@ -1073,9 +1074,9 @@ match a rule in that selected context.  That cost is accepted initially because
 preserving fail-closed output is more important than maximizing emission in an
 unusual rule collision.
 
-The logfmt renderer still adds meaningful implementation and testing work.
-Escaping must be deterministic and parser-compatible, but it is no longer part of
-the primary secret-discovery problem.
+The logfmt renderer adds meaningful implementation and testing work.  Escaping
+is deterministic and presentation-specific, but it is not part of the primary
+secret-discovery problem.
 
 The architecture avoids a larger cost: bashlog does not become a platform-
 detection, application-policy, or log-transport framework.  systemd, Docker,
@@ -1110,13 +1111,12 @@ informal name.
 
 ## Superseded Decisions
 
-If Accepted, this ADR SHALL supersede only the following portions of earlier
-Accepted decisions:
+This ADR supersedes only the following portions of earlier Accepted decisions:
 
-- ADR-017 and the current public specification insofar as they require the logging
-  pipeline to render a complete `level: message` candidate before explicitly
-  selected primary redaction transformation;
-- ADR-024 insofar as its wording assumes that final verification is immediately
+- ADR-017 and the earlier public specification insofar as they required the
+  logging pipeline to render a complete `level: message` candidate before
+  explicitly selected primary redaction transformation;
+- ADR-024 insofar as its wording assumed that final verification was immediately
   preceded by transformation of that same complete rendered candidate.
 
 The following earlier principles remain in force:
@@ -1140,32 +1140,12 @@ developer invokes it explicitly.
 
 ## Open Questions and Follow-Ups
 
-- The normative specification must define exact per-field logger-managed
-  redaction and the transition from the current complete-candidate implementation
-  while preserving both explicit redaction workflows.
-- The normative specification should include examples of context creation/rule
-  registration, caller-managed `bashlog_redact` composition, logger-managed
-  `--context CONTEXT`, and `--` option termination.
-- Tests must demonstrate that `bashlog_info "This is an info message."` remains a
-  valid ordinary call with no mandatory options or delimiter.
-- Tests must demonstrate that a leading-hyphen format string can be passed after
-  `--` without being interpreted as a logging option.
-- Feasibility tests must establish the exact pure-Bash quoting and escaping
-  algorithm for the bashlog logfmt profile on Bash 4.3.
-- Compatibility fixtures should be parsed by one or more established logfmt
-  implementations before the specification calls the renderer compatible.
-- The public specification must define exact behavior for embedded newlines and
-  other representable control characters under logfmt.
-- Tests must prove that registered contexts remain inert for logging calls that do
-  not explicitly select them.
-- Tests must cover renderer-created final-verification matches so the fail-closed
-  behavior is deliberate rather than accidental.
-- The exact ANSI severity palette for the human renderer remains a separate
-  specification detail under ADR-025.
 - Direct remote syslog remains deferred until a concrete requirement justifies a
   network sink and its delivery semantics.
 - JSON Lines remains a possible future structured renderer if concrete consumers
   require stronger standardized serialization.
+- Additional presentation styling remains governed by ADR-027 and future explicit
+  decisions rather than implicit renderer growth.
 
 ## Related Decisions
 
@@ -1181,3 +1161,4 @@ developer invokes it explicitly.
 - ADR-023: Glob and ERE Redaction Semantics
 - ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 - ADR-025: Optional Presentation Metadata, Tags, and Color
+- ADR-027: Configurable Severity Token Styles
