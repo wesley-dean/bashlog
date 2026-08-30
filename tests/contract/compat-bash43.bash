@@ -36,7 +36,11 @@ bashlog_info --tag compat 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stder
 bashlog_timestamp_set utc || fail 'set UTC timestamp'
 bashlog_info 'timestamp-check' >"${stdout_file}" 2>"${stderr_file}" || fail 'UTC timestamp log call'
 [[ ! -s ${stdout_file} ]] || fail 'UTC timestamp stdout'
-[[ $(<"${stderr_file}") =~ ^ts=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\ level=info\ msg="timestamp-check"$ ]] || fail 'UTC timestamp rendering'
+timestamp_record=$(<"${stderr_file}")
+if [[ ! ${timestamp_record} =~ ^ts=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\ level=info\ msg="timestamp-check"$ ]]; then
+  printf 'bash43 UTC timestamp observed: %q\n' "${timestamp_record}" >&2
+  fail 'UTC timestamp rendering'
+fi
 bashlog_timestamp_set off || fail 'disable timestamp'
 bashlog_format_set human || fail 'restore human format'
 
