@@ -48,6 +48,34 @@ the rule is narrow.  `format=auto` and `color=auto` inspect only whether fd 2 is
 TTY.  They do not infer systemd, Docker, Podman, CI, logging drivers, or operator
 intent.
 
+## Follow UNIX Composition Principles Deliberately
+
+UNIX philosophy is a strong influence on bashlog's shape: do one coherent job,
+communicate through ordinary interfaces, compose with surrounding tools, and avoid
+taking ownership of concerns that belong elsewhere in the pipeline.
+
+For bashlog, that means concrete choices such as:
+
+- routine log records go to stderr so stdout remains available for application
+  data, pipelines, and command substitution;
+- records remain text rather than requiring a binary transport;
+- the library owns logging/redaction behavior while the surrounding environment
+  owns persistence, forwarding, aggregation, and service/container integration;
+- callers may create ordinary wrappers instead of bashlog claiming generic names
+  or application control flow;
+- the library exposes sourceable functions rather than forcing a standalone
+  command dispatcher;
+- exit statuses are part of the documented interface; and
+- one standalone generated artifact composes into other Bash projects without
+  requiring a runtime framework.
+
+UNIX philosophy is not treated as a slogan that overrides security or correctness.
+Fail-closed redaction, process-local configuration, deterministic logfmt, and
+standalone generated artifacts are deliberate additions where a stronger contract
+is more useful than maximal minimalism.  The relevant question is whether a
+mechanism solves a real logging problem without unnecessarily capturing policy or
+infrastructure that can remain outside bashlog.
+
 ## Define Contracts Before Mechanisms
 
 Public behavior is a compatibility commitment.  The project therefore prefers to
