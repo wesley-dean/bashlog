@@ -161,18 +161,21 @@ than reproduce architectural rationale at length.
 
 ### Project Specification
 
-A normative project specification SHALL be added when bashlog's public behavior
-is sufficiently stable to define precisely.  The expected path is
-`doc/bashlog-spec.md`.
+`doc/bashlog-spec.md` SHALL define the accepted normative observable public
+behavior of bashlog: function signatures, accepted values, matching semantics,
+ordering, return statuses, output behavior, and other public contracts.
 
-The specification describes **what the current released interface does**:
-function signatures, accepted values, matching semantics, ordering, return
-statuses, output behavior, and other observable contracts.
+ADRs explain **why important choices were made**.  The specification defines
+**what conforming implementation behavior must be**.
 
-ADRs explain **why important choices were made**.
+Specification acceptance and implementation conformance are distinct.  An
+accepted specification may govern work before the runtime has been implemented;
+the repository MUST NOT describe behavior as implemented merely because the
+normative document has been accepted.
 
 If an ADR is later superseded while public behavior changes, the specification
-should describe the new current behavior rather than preserving obsolete history.
+SHOULD describe the new normative behavior rather than preserving obsolete
+history.
 
 ### Doxygen Source Documentation
 
@@ -219,7 +222,7 @@ validation includes architectural alignment, not only syntax and behavior.
    replacing the ADR corpus.
 
 3. **Public claims remain traceable.**  README guarantees and limitations should
-   be grounded in accepted decisions and current specification behavior.
+   be grounded in accepted decisions and normative specification behavior.
 
 4. **Implementation documentation stays close to code.**  Doxygen comments
    preserve local contracts without becoming a parallel architecture history.
@@ -298,8 +301,10 @@ problem.
 - Passing tests MUST NOT be treated as proof of architectural alignment.
 - Consequential changes SHOULD be reviewed against the ADR constraints that
   governed their implementation.
-- A normative `doc/bashlog-spec.md` SHOULD be created before the public API is
-  declared stable.
+- `doc/bashlog-spec.md` MUST remain aligned with accepted public-behavior
+  decisions and implementation-facing Doxygen/test contracts.
+- Specification acceptance MUST NOT be represented as implementation conformance
+  without supporting runtime evidence.
 
 ## Considered Alternatives
 
@@ -377,11 +382,8 @@ in Bootstrap while preserving the fuller ADR as the authority for reasoning.
 
 ## Open Questions and Follow-Ups
 
-- `doc/bashlog-spec.md` should be created after the foundational API and redaction
-  semantics have been accepted.
-- README public promises should be rewritten from accepted ADRs before the first
-  bashlog release rather than finalized while key matcher semantics remain
-  proposed.
+- Keep `doc/bashlog-spec.md`, public README claims, Doxygen contracts, and
+  behavior tests synchronized as implementation progresses.
 - The project may eventually generate portions of the ADR index automatically,
   but automation must not turn the decision map into generated opaque state.
 
