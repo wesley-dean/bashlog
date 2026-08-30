@@ -26,7 +26,11 @@ BASHDEPS_VERSION := 0.0.6
 BASHDEPS_URL := https://github.com/wesley-dean/bashdeps/releases/download/v$(BASHDEPS_VERSION)/bashdeps.bash
 BASHDEPS_SHA256 := bb6c807fa12c010950bda06172ac0611d278c57aca1f8352f41502d0d76b4e6c
 BASH_MINIFIER := $(VENDOR_DIR)/bash-minifier.bash
+ADRCTL := $(VENDOR_DIR)/adrctl.bash
 DOXYGEN_BASH_FILTER := $(VENDOR_DIR)/doxygen-bash.awk
+ADR_INDEX := doc/adr/README.md
+ADR_INDEX_INTRO := doc/adr/README.intro.md
+ADR_INDEX_OUTRO := doc/adr/README.outro.md
 REFERENCE_DOC_DIR := doc/reference
 
 VERSION ?= 0.0.0-dev
@@ -34,7 +38,7 @@ BUILD_COMMIT ?= $(shell commit="$$(git rev-parse --short=12 HEAD 2>/dev/null || 
 BUILD_DATE ?= $(shell git show -s --format=%cI HEAD 2>/dev/null || printf 'unknown')
 SHFMT_ARGUMENTS := -i 2 -bn -ci -sr -kp
 
-.PHONY: all build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-report verify-bashdeps
+.PHONY: adr-index all build check checksums clean deps deps-check distclean docs docs-clean FORCE format test test-report verify-bashdeps
 
 ## Synchronize repository dependencies, then build consumer artifacts.
 all: deps
@@ -151,8 +155,20 @@ deps: $(BASHDEPS) $(DEPENDENCY_MANIFEST)
 deps-check: verify-bashdeps $(DEPENDENCY_MANIFEST)
 	"$(BASHDEPS)" verify "$(DEPENDENCY_MANIFEST)"
 
-## Generate Doxygen reference documentation from already-prepared filter state.
-docs:
+## Regenerate the committed ADR landing page from maintained ADR source and framing.
+adr-index:
+	@test -f "$(ADRCTL)" || { printf '%s\n' 'Missing documentation dependency vendor/adrctl.bash; run make deps or make all' >&2; exit 1; }
+	@test -f "$(ADR_INDEX_INTRO)" || { printf '%s\n' 'Missing maintained ADR index introduction: $(ADR_INDEX_INTRO)' >&2; exit 1; }
+	@test -f "$(ADR_INDEX_OUTRO)" || { printf '%s\n' 'Missing maintained ADR index conclusion: $(ADR_INDEX_OUTRO)' >&2; exit 1; }
+	@tmp="$(ADR_INDEX).tmp"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" -o "$(ADR_INDEX_OUTRO)" >"$$tmp"; \
+	mv "$$tmp" "$(ADR_INDEX)"; \
+	trap - EXIT
+
+## Generate committed ADR navigation and ephemeral Doxygen reference documentation.
+## Both generators consume already-prepared documentation dependency state.
+docs: adr-index
 	@test -f "$(DOXYGEN_BASH_FILTER)" || { printf '%s\n' 'Missing documentation dependency vendor/doxygen-bash.awk; run make deps or make all' >&2; exit 1; }
 	$(MAKE) --no-print-directory docs-clean
 	chmod 0755 "$(DOXYGEN_BASH_FILTER)"
