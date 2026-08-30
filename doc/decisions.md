@@ -9,15 +9,13 @@ This file is intentionally **not** a substitute for the ADR corpus.  When a
 summary and a governing ADR appear to conflict, read the ADR and surface the
 conflict rather than silently choosing the shorter wording.
 
-Accepted ADRs describe current architectural decisions.  Proposed ADRs describe
-the current design proposal and are not yet binding until accepted.
-
-The draft normative public behavior derived from these decisions is documented in
-[`doc/bashlog-spec.md`](bashlog-spec.md).  The specification defines function
+The ADRs listed below are Accepted and describe current architectural decisions.
+The accepted normative public behavior derived from these decisions is documented
+in [`doc/bashlog-spec.md`](bashlog-spec.md).  The specification defines function
 names, arguments, output streams, return statuses, threshold behavior, matcher
 semantics, and failure behavior; it does not replace the architectural reasoning
-in the ADRs and remains Draft while its governing bashlog-specific ADRs are
-Proposed.
+in the ADRs.  Acceptance of the architecture and specification does not imply
+that the current starter-derived runtime already implements them.
 
 ## Accepted Decisions
 
@@ -35,17 +33,17 @@ See [ADR-000](adr/ADR-000-capability-scope-and-epistemic-honesty.md).
 ADRs are the canonical record of durable architectural reasoning;
 `doc/decisions.md` is the concise decision map; `AGENTS.md` is an operational
 navigation aid; Doxygen comments own implementation-level contracts;
-`doc/bashlog-spec.md` owns the draft normative public behavior; and tests provide
-evidence rather than superseding architectural intent.
+`doc/bashlog-spec.md` owns normative public behavior; and tests provide evidence
+rather than superseding architectural intent.
 
 See [ADR-001](adr/ADR-001-documentation-and-decision-hierarchy.md).
 
 ### ADR-002: Bash Runtime and Portability Baseline
 
-bashlog currently targets Bash 4.3 or newer and avoids post-4.3 runtime features
-unless a later ADR intentionally raises the minimum.  The floor should be
-revisited if a newer Bash version materially improves correctness, security,
-readability, or auditability rather than merely providing convenience.
+bashlog targets Bash 4.3 or newer and avoids post-4.3 runtime features unless a
+later ADR intentionally raises the minimum.  The floor should be revisited if a
+newer Bash version materially improves correctness, security, readability, or
+auditability rather than merely providing convenience.
 
 See [ADR-002](adr/ADR-002-bash-runtime-and-portability-baseline.md).
 
@@ -61,11 +59,10 @@ See [ADR-003](adr/ADR-003-make-as-canonical-orchestration-interface.md).
 
 Maintained implementation uses explicitly ordered core source plus
 deterministically discovered additive modules, assembled into standalone
-consumer artifacts.  For bashlog, the runtime registry/noop portions of this
-inherited decision are proposed to be superseded by ADR-016 while the modular
-assembly principles remain.
+consumer artifacts.  ADR-016 supersedes the inherited runtime-registry/noop
+portions for bashlog while retaining the useful modular assembly principles.
 
-See [ADR-004](adr/ADR-004-modular-source-and-plugin-discovery.md) and proposed
+See [ADR-004](adr/ADR-004-modular-source-and-plugin-discovery.md) and
 [ADR-016](adr/ADR-016-modular-source-assembly-for-a-sourceable-library.md).
 
 ### ADR-005: Dependency Management and Explicit Network Boundaries
@@ -141,12 +138,10 @@ of the preferred `.sha256` resource, not after transport or verification errors.
 
 See [ADR-012](adr/ADR-012-standardize-sha256-checksum-companion-filenames.md).
 
-## Proposed Decisions
-
 ### ADR-013: Sourceable Library Scope and Responsibility Boundary
 
-bashlog is proposed as a narrowly scoped, sourceable logging/redaction library:
-loading it does not install traps, change shell options, create generic aliases or
+bashlog is a narrowly scoped, sourceable logging/redaction library: loading it
+does not install traps, change shell options, create generic aliases or
 functions, access the network, or assume application control-flow policy.  The
 caller owns application data acquisition and application-specific transformation;
 bashlog owns logging-related processing within its documented boundary.
@@ -155,112 +150,110 @@ See [ADR-013](adr/ADR-013-sourceable-library-scope-and-responsibility-boundary.m
 
 ### ADR-014: Pure Bash Runtime and External Command Boundary
 
-Runtime bashlog behavior is proposed to use Bash language facilities and builtins
-only, with no external commands in sourcing, formatting, redaction, rendering, or
-emission.  Caller-selected external commands remain caller-owned, and development
-or release tooling is explicitly outside the consumer runtime boundary.
+Runtime bashlog behavior uses Bash language facilities and builtins only, with no
+external commands in sourcing, formatting, redaction, rendering, or emission.
+Caller-selected external commands remain caller-owned, and development or release
+tooling is explicitly outside the consumer runtime boundary.
 
 See [ADR-014](adr/ADR-014-pure-bash-runtime-and-external-command-boundary.md).
 
 ### ADR-015: Namespaced Public API and Caller-Owned Convenience Wrappers
 
-The public API is proposed to use stable `bashlog_*` names, with visibly internal
-`__bashlog_*` implementation names and no claim that Bash provides true privacy.
-Generic names such as `info`, `warn`, `error`, and `die` remain caller-owned and
-may be created through explicit wrapper functions rather than aliases, `eval`, or
-exported-function machinery.
+The public API uses stable `bashlog_*` names, with visibly internal `__bashlog_*`
+implementation names and no claim that Bash provides true privacy.  Generic names
+such as `info`, `warn`, `error`, and `die` remain caller-owned and may be created
+through explicit wrapper functions rather than aliases, `eval`, or exported-
+function machinery.
 
 See [ADR-015](adr/ADR-015-namespaced-public-api-and-caller-owned-convenience-wrappers.md).
 
 ### ADR-016: Modular Source Assembly for a Sourceable Library
 
-bashlog is proposed to retain explicit core ordering and deterministic additive
-module discovery while dropping the template's runtime plugin registry and noop
-plugin.  Modularity is a maintenance/build concern; consumers receive a
-standalone sourceable artifact and do not perform runtime plugin discovery.
+bashlog retains explicit core ordering and deterministic additive module discovery
+while dropping the template's runtime plugin registry and noop plugin.  Modularity
+is a maintenance/build concern; consumers receive a standalone sourceable
+artifact and do not perform runtime plugin discovery.
 
 See [ADR-016](adr/ADR-016-modular-source-assembly-for-a-sourceable-library.md).
 
 ### ADR-017: Logging Pipeline, Levels, Formatting, and Emission
 
-All bashlog-provided logging helpers are proposed to converge through a common
-pipeline in which supported message formatting and sink-bound metadata are
-complete before the final redaction boundary and emission.  Severity, verbosity,
-rendering, or convenience helpers may not create alternate unredacted sink paths.
+All bashlog-provided logging helpers converge through a common pipeline in which
+supported message formatting and sink-bound metadata are complete before the
+final redaction boundary and emission.  Severity, verbosity, rendering, or
+convenience helpers may not create alternate unredacted sink paths.
 
 See [ADR-017](adr/ADR-017-logging-pipeline-levels-formatting-and-emission.md).
 
 ### ADR-018: Redaction as an Opt-In Security Boundary
 
-Redaction is proposed as explicit defense in depth: bashlog does not guess which
-values are sensitive, but once a rule is accepted, honoring it becomes a
-security obligation for bashlog-controlled sinks.  Redaction failure suppresses
-the original message, replacement text is always literal, registered secret
-values are not intentionally exposed through public retrieval, persistence,
-environment export, diagnostics, or external helper programs, and the project
-makes no secure-memory or hostile-same-process-code claim.
+Redaction is explicit defense in depth: bashlog does not guess which values are
+sensitive, but once a rule is accepted, honoring it becomes a security obligation
+for bashlog-controlled sinks.  Redaction failure suppresses the original message,
+replacement text is always literal, registered secret values are not intentionally
+exposed through public retrieval, persistence, environment export, diagnostics,
+or external helper programs, and the project makes no secure-memory or hostile-
+same-process-code claim.
 
 See [ADR-018](adr/ADR-018-redaction-as-an-opt-in-security-boundary.md).
 
 ### ADR-019: Readability, Auditability, and Rejection of Obscurity
 
-Security-sensitive implementation is proposed to treat readability and
-auditability as correctness properties.  bashlog does not rely on obscure names,
-reversible encoding, `eval`, generated code, or fake encapsulation as security
-controls; the critical path should be directly understandable from maintained
-Bash source and its exact Doxygen documentation.
+Security-sensitive implementation treats readability and auditability as
+correctness properties.  bashlog does not rely on obscure names, reversible
+encoding, `eval`, generated code, or fake encapsulation as security controls; the
+critical path should be directly understandable from maintained Bash source and
+its exact Doxygen documentation.
 
 See [ADR-019](adr/ADR-019-readability-auditability-and-rejection-of-obscurity.md).
 
 ### ADR-020: Redaction Context Lifecycle and State Model
 
-Redaction contexts are proposed to follow a monotonic `unseen -> active ->
-destroyed` lifecycle: the first successful rule addition creates an active
-context, active contexts are append-only, and whole-context destruction is
-one-way for the process without claiming secure erasure.  Explicitly requesting
-an unknown, invalid, or destroyed context fails closed rather than silently
-behaving like an empty rule set.
+Redaction contexts follow a monotonic `unseen -> active -> destroyed` lifecycle:
+the first successful rule addition creates an active context, active contexts are
+append-only, and whole-context destruction is one-way for the process without
+claiming secure erasure.  Explicitly requesting an unknown, invalid, or destroyed
+context fails closed rather than silently behaving like an empty rule set.
 
 See [ADR-020](adr/ADR-020-redaction-context-lifecycle-and-state-model.md).
 
 ### ADR-021: Redaction Rule Registration, Ordering, and Replacement Semantics
 
-Rules are proposed to require an explicit `fixed`, `glob`, or `ere` matcher,
-validate atomically before append, preserve exact registration order, reject
-duplicate matcher/pattern pairs, and perform one bounded global pass per rule.
-Replacement text is always literal, empty replacement is valid, and a rule whose
-replacement still matches itself is rejected rather than accepted as a
-predictably unsatisfiable rule.
+Rules require an explicit `fixed`, `glob`, or `ere` matcher, validate atomically
+before append, preserve exact registration order, reject duplicate matcher/pattern
+pairs, and perform one bounded global pass per rule.  Replacement text is always
+literal, empty replacement is valid, and a rule whose replacement still matches
+itself is rejected rather than accepted as predictably unsatisfiable.
 
 See [ADR-021](adr/ADR-021-redaction-rule-registration-ordering-and-replacement.md).
 
 ### ADR-022: Fixed-String Redaction and Multibyte Guarantees
 
-`fixed` is proposed as the strongest matcher for known secrets: every pattern
-character is literal, every non-overlapping exact occurrence is replaced, and an
-exact representable multibyte sequence is protected without glob, ERE, case-fold,
-or Unicode-normalization semantics.  Embedded NUL data remains outside the Bash
+`fixed` is the strongest matcher for known secrets: every pattern character is
+literal, every non-overlapping exact occurrence is replaced, and an exact
+representable multibyte sequence is protected without glob, ERE, case-fold, or
+Unicode-normalization semantics.  Embedded NUL data remains outside the Bash
 string model and is explicitly not claimed as supported.
 
 See [ADR-022](adr/ADR-022-fixed-string-redaction-and-multibyte-guarantees.md).
 
 ### ADR-023: Glob and ERE Redaction Semantics
 
-`glob` is proposed to use a deliberately limited basic Bash pattern language with
-no extglob dependency, while `ere` uses Bash `[[ =~ ]]` extended regular
-expressions; both operate case-sensitively in the caller's current locale.
-Invalid EREs and any glob/ERE capable of matching empty text are rejected so
-global replacement remains bounded and auditable.
+`glob` uses a deliberately limited basic Bash pattern language with no extglob
+dependency, while `ere` uses Bash `[[ =~ ]]` extended regular expressions; both
+operate case-sensitively in the caller's current locale.  Invalid EREs and any
+glob/ERE capable of matching empty text are rejected so global replacement
+remains bounded and auditable.
 
 See [ADR-023](adr/ADR-023-glob-and-ere-redaction-semantics.md).
 
 ### ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 
 After one registration-ordered transformation pass, the complete rendered
-candidate is proposed to be rechecked against every active fixed, glob, and ERE
-rule immediately before emission.  Any remaining match or matcher-evaluation
-error suppresses the candidate; bashlog does not repeatedly rewrite until a fixed
-point, and even failure diagnostics use a bounded path that prefers silence when
-they cannot be verified safely.
+candidate is rechecked against every active fixed, glob, and ERE rule immediately
+before emission.  Any remaining match or matcher-evaluation error suppresses the
+candidate; bashlog does not repeatedly rewrite until a fixed point, and even
+failure diagnostics use a bounded path that prefers silence when they cannot be
+verified safely.
 
 See [ADR-024](adr/ADR-024-final-redaction-verification-and-fail-closed-output.md).
