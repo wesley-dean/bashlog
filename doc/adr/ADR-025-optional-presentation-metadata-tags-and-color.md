@@ -20,8 +20,9 @@ first implemented contract:
 - and severity-aware ANSI color for human-facing output.
 
 ADR-026 separately defines how bashlog chooses between the human and logfmt
-renderers.  This ADR owns the fields and presentation policy shared by those
-renderers rather than the transport or environment-selection model.
+renderers and defines the semantic-data-before-rendering security ordering.  This
+ADR owns the fields and presentation policy shared by those renderers rather than
+the transport or environment-selection model.
 
 ## Context
 
@@ -36,10 +37,11 @@ prove precisely.  With that core now implemented, several useful presentation
 features can be added without changing bashlog's narrow purpose.
 
 The features have different security and compatibility implications.
-Caller-supplied tags are untrusted sink-bound data and must participate in
-redaction.  Timestamps are library-generated metadata, but they still become part
-of the emitted record.  ANSI color is presentation control data and must not
-interfere with matcher semantics or appear in machine-oriented logfmt output.
+Caller-supplied tags are application data and must be protected by a selected
+redaction context before a renderer serializes them.  Timestamps are
+library-generated metadata.  ANSI color is presentation control data and must not
+interfere with primary matcher semantics or appear in machine-oriented logfmt
+output.
 
 The project therefore needs explicit configuration and ordering rather than
 adding presentation bytes opportunistically inside the logger.
@@ -50,8 +52,10 @@ adding presentation bytes opportunistically inside the logger.
   guarantee.
 - Provide a useful interactive default before the first public release.
 - Keep machine-oriented output free of bashlog-owned ANSI decoration.
-- Ensure caller-supplied tags participate in the same redaction obligation as
-  message data.
+- Ensure caller-supplied tags participate in the same primary redaction
+  obligation as message data.
+- Keep library-generated metadata distinct from caller-supplied secret-bearing
+  fields.
 - Avoid an arbitrary template language that would add parsing and escaping
   semantics before concrete use cases justify it.
 - Keep timestamp acquisition late enough that threshold-suppressed messages do
@@ -125,6 +129,11 @@ established.
 
 The initial timestamp contract does not include fractional seconds.
 
+A bashlog-generated timestamp is library-owned metadata.  ADR-026 therefore does
+not require the primary logging redaction pass to transform it.  The completed
+context-protected record, including the rendered timestamp, remains subject to
+final non-transforming verification before emission.
+
 ### Per-Call Tags
 
 Every public logging call SHALL accept zero or more repeatable:
@@ -160,10 +169,10 @@ order:
 level=warning tag=api tag=retry msg="request delayed"
 ```
 
-Tags are caller-supplied sink-bound data.  Renderer selection and serialization
-MUST NOT allow a tag to bypass the selected redaction context.  ADR-026 defines
-the stronger cross-renderer invariant that reversible serialization cannot be
-used as a substitute for redaction.
+Tags are caller-supplied semantic data.  When a logging call selects a redaction
+context, each tag SHALL be transformed and verified before either renderer adds
+brackets, `tag=` syntax, quoting, escaping, or other presentation bytes.  The
+renderer therefore receives an already-protected tag value.
 
 The initial extension SHALL NOT add ambient global tags.  Applications that want
 a constant component label MAY define caller-owned wrappers, for example:
@@ -214,11 +223,15 @@ constants.  The exact initial palette belongs in `doc/bashlog-spec.md` when thes
 proposed decisions are ratified so tests can treat it as observable public
 behavior.
 
-Color is presentation decoration rather than message semantics.  ANSI bytes MUST
-NOT be introduced at a point where they can prevent a registered redaction rule
-from matching semantic caller data.  Context-protected human output SHALL also be
-subject to an appropriate final non-transforming verification after bashlog-owned
-presentation decoration is complete.
+Color is presentation decoration rather than message semantics.  ANSI bytes SHALL
+be introduced only after caller-supplied message and tag fields have completed
+their primary redaction transformation and semantic verification.  Color
+therefore cannot split or disguise an application value before the matcher sees
+it.
+
+Context-protected human output SHALL also receive the final non-transforming
+verification defined by ADR-026 after bashlog-owned presentation decoration is
+complete.
 
 ### Default Presentation Combination
 
@@ -276,19 +289,22 @@ justify the additional compatibility, parsing, and security surface.
 3. **No external metadata helper.**  Timestamp generation and terminal detection
    use Bash facilities only.
 
-4. **Tags remain protected data.**  Caller-supplied tags cannot escape the
-   selected redaction obligation merely because they are metadata rather than
-   message text.
+4. **Tags remain protected application data.**  Caller-supplied tags are
+   transformed before presentation serialization when a context is selected.
 
-5. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
+5. **Presentation follows primary redaction.**  Human brackets, logfmt field
+   syntax, quoting, escaping, and ANSI decoration are not introduced until the
+   caller-supplied fields they represent have been protected.
+
+6. **Threshold-suppressed calls remain cheap.**  A valid call suppressed by
    severity policy does not acquire a timestamp, construct the message, encode
    tags, or add presentation decoration.
 
-6. **Caller shell state is preserved.**  Timestamp and terminal handling do not
+7. **Caller shell state is preserved.**  Timestamp and terminal handling do not
    leave caller `TZ`, shell options, `shopt` options, or other caller-owned state
    changed.
 
-7. **No ambient host metadata expansion.**  Adding timestamps and tags does not
+8. **No ambient host metadata expansion.**  Adding timestamps and tags does not
    authorize automatic hostname, PID, Git, container, service, or orchestration
    discovery.
 
@@ -321,14 +337,20 @@ justify the additional compatibility, parsing, and security surface.
    color before the first public release.  Callers requiring plain human output
    can select `color=never`.
 
+9. The selected redaction context does not rewrite library-generated timestamp or
+   severity fields during the primary field-redaction stage.  Those fields are
+   still included in final sink-bound verification.
+
 ## Adversary and Failure Model
 
 This decision accounts for:
 
 - a tag containing characters intended to break visual field boundaries;
 - a protected value appearing in a tag rather than the message body;
-- a redaction rule that interacts with generated timestamp text;
-- a redaction rule that interacts with bashlog-owned ANSI bytes;
+- a registered secret containing bytes that would require logfmt escaping if
+  they survived into the renderer;
+- renderer punctuation or color creating a final byte sequence that collides
+  with an active verification rule;
 - an application whose standard error is a terminal for one invocation and
   redirected for another;
 - a threshold-suppressed call that should avoid unnecessary metadata work;
@@ -336,9 +358,9 @@ This decision accounts for:
 - and future maintainers tempted to introduce presentation bytes before the
   security boundary because doing so appears visually convenient.
 
-The decision does not sanitize arbitrary caller message content by itself.  The
-selected renderer and redaction pipeline define the exact behavior of message
-serialization.
+The decision does not sanitize arbitrary caller message content by itself.  ADR-
+026 defines the primary semantic redaction stage and the selected renderer defines
+exact serialization behavior after that protection has succeeded.
 
 ## Operational Constraints
 
@@ -346,7 +368,10 @@ serialization.
 - Color mode MUST default to `auto`.
 - Tags MUST be explicit per logging call and MAY be repeated.
 - Tags MUST match `[A-Za-z0-9_.:-]+` using an explicitly ASCII interpretation.
-- Timestamp and tag data MUST participate in the selected redaction obligation.
+- Caller-supplied tags MUST participate in primary per-field logging redaction
+  before renderer serialization when a context is selected.
+- Bashlog-generated timestamps MUST NOT be transformed by the primary logging
+  redaction pass.
 - Color MUST apply only to the human renderer.
 - Logfmt output MUST contain no bashlog-owned ANSI color sequences.
 - `auto` human color MUST use Bash `[[ -t 2 ]]` rather than an external command.
@@ -355,7 +380,9 @@ serialization.
 - New configuration setters MUST validate atomically and leave prior state
   unchanged on invalid input.
 - No arbitrary caller-controlled render template is introduced by this ADR.
-- Presentation serialization MUST NOT weaken the fail-closed redaction boundary.
+- Presentation serialization MUST occur after primary redaction of caller data.
+- Completed context-protected output MUST remain subject to ADR-026's final
+  non-transforming verification.
 
 ## Considered Alternatives
 
@@ -402,6 +429,16 @@ It was deferred because caller-owned wrapper functions already solve the common
 case without another mutable global configuration layer.  A later ADR can add a
 persistent tag model if repeated per-call tags prove materially burdensome.
 
+### Transform Generated Timestamps Through the Primary Redaction Context
+
+This would most closely resemble the first implementation's complete rendered-
+candidate transformation.
+
+It was rejected because a timestamp generated by bashlog is not caller secret-
+bearing application data.  Transforming it could also make the timestamp invalid
+for the selected renderer.  Final verification still fails closed if generated
+metadata conflicts with an active rule.
+
 ### Require Callers to Supply Timestamps
 
 This preserves the narrowest possible metadata-acquisition boundary.
@@ -427,13 +464,13 @@ bashlog-owned ANSI because ADR-026 selects logfmt there under the default format
 mode.
 
 Implementation will need explicit presentation state, additional option parsing,
-Bash-native timestamp generation, tag validation, and renderer-aware color
-application.
+Bash-native timestamp generation, tag validation, primary field redaction, and
+renderer-aware color application.
 
-Tests must cover timestamps with redaction, tags containing protected values,
-color in `never`/`auto`/`always` modes, terminal and redirected human output,
-logfmt's unconditional no-color guarantee, invalid configuration, and
-preservation of caller state.
+Tests must cover timestamps, tags containing protected values, color in
+`never`/`auto`/`always` modes, terminal and redirected human output, logfmt's
+unconditional no-color guarantee, invalid configuration, preservation of caller
+state, and final verification of completed records.
 
 ## Source Lineage
 
@@ -443,7 +480,8 @@ ADR-015's caller-owned wrapper model, ADR-017's common logging pipeline, and
 ADR-024's fail-closed final output boundary.
 
 ADR-026 extends this presentation model by defining environment-agnostic standard-
-error transport and adaptive human/logfmt renderer selection.
+error transport, adaptive human/logfmt renderer selection, and the semantic-
+redaction-before-presentation ordering.
 
 ## Open Questions and Follow-Ups
 
