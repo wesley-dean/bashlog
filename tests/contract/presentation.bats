@@ -162,8 +162,8 @@ BASH
     source "$1"
     bashlog_format_set human || exit
     bashlog_color_set never || exit
-    bashlog_redaction_add secrets fixed token REDACTED || exit
-    bashlog_info --tag auth --context secrets -- '-token=%s' token
+    bashlog_redaction_add secrets fixed secret-value REDACTED || exit
+    bashlog_info --tag auth --context secrets -- '-token=%s' secret-value
 BASH
 
   [ "${status}" -eq 0 ]
@@ -190,8 +190,8 @@ BASH
     source "$1"
     bashlog_format_set human || exit
     bashlog_color_set never || exit
-    bashlog_redaction_add secrets fixed token REDACTED || exit
-    clean="$(bashlog_redact secrets 'token=token')" || exit
+    bashlog_redaction_add secrets fixed secret-value REDACTED || exit
+    clean="$(bashlog_redact secrets 'token=secret-value')" || exit
     bashlog_info '%s' "${clean}"
 BASH
 
@@ -205,8 +205,8 @@ BASH
     source "$1"
     bashlog_format_set human || exit
     bashlog_color_set never || exit
-    bashlog_redaction_add secrets fixed token REDACTED || exit
-    bashlog_info --context secrets 'token=%s' token
+    bashlog_redaction_add secrets fixed secret-value REDACTED || exit
+    bashlog_info --context secrets 'token=%s' secret-value
 BASH
 
   [ "${status}" -eq 0 ]
@@ -255,7 +255,7 @@ BASH
 
 @test "local timestamp includes numeric UTC offset" {
   run_bashlog_script <<'BASH'
-    TZ=UTC0
+    export TZ=UTC0
     source "$1"
     bashlog_format_set logfmt || exit
     bashlog_timestamp_set local || exit
@@ -269,7 +269,7 @@ BASH
 
 @test "UTC timestamp generation preserves caller TZ value" {
   run_bashlog_script <<'BASH'
-    TZ=EST5EDT
+    export TZ=EST5EDT
     source "$1"
     before=${TZ}
     bashlog_format_set logfmt || exit
