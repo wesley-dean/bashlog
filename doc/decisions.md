@@ -204,3 +204,56 @@ controls; the critical path should be directly understandable from maintained
 Bash source and its exact Doxygen documentation.
 
 See [ADR-019](adr/ADR-019-readability-auditability-and-rejection-of-obscurity.md).
+
+### ADR-020: Redaction Context Lifecycle and State Model
+
+Redaction contexts are proposed to follow a monotonic `unseen -> active ->
+destroyed` lifecycle: the first successful rule addition creates an active
+context, active contexts are append-only, and whole-context destruction is
+one-way for the process without claiming secure erasure.  Explicitly requesting
+an unknown, invalid, or destroyed context fails closed rather than silently
+behaving like an empty rule set.
+
+See [ADR-020](adr/ADR-020-redaction-context-lifecycle-and-state-model.md).
+
+### ADR-021: Redaction Rule Registration, Ordering, and Replacement Semantics
+
+Rules are proposed to require an explicit `fixed`, `glob`, or `ere` matcher,
+validate atomically before append, preserve exact registration order, reject
+duplicate matcher/pattern pairs, and perform one bounded global pass per rule.
+Replacement text is always literal, empty replacement is valid, and a rule whose
+replacement still matches itself is rejected rather than accepted as a
+predictably unsatisfiable rule.
+
+See [ADR-021](adr/ADR-021-redaction-rule-registration-ordering-and-replacement.md).
+
+### ADR-022: Fixed-String Redaction and Multibyte Guarantees
+
+`fixed` is proposed as the strongest matcher for known secrets: every pattern
+character is literal, every non-overlapping exact occurrence is replaced, and an
+exact representable multibyte sequence is protected without glob, ERE, case-fold,
+or Unicode-normalization semantics.  Embedded NUL data remains outside the Bash
+string model and is explicitly not claimed as supported.
+
+See [ADR-022](adr/ADR-022-fixed-string-redaction-and-multibyte-guarantees.md).
+
+### ADR-023: Glob and ERE Redaction Semantics
+
+`glob` is proposed to use a deliberately limited basic Bash pattern language with
+no extglob dependency, while `ere` uses Bash `[[ =~ ]]` extended regular
+expressions; both operate case-sensitively in the caller's current locale.
+Invalid EREs and any glob/ERE capable of matching empty text are rejected so
+global replacement remains bounded and auditable.
+
+See [ADR-023](adr/ADR-023-glob-and-ere-redaction-semantics.md).
+
+### ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
+
+After one registration-ordered transformation pass, the complete rendered
+candidate is proposed to be rechecked against every active fixed, glob, and ERE
+rule immediately before emission.  Any remaining match or matcher-evaluation
+error suppresses the candidate; bashlog does not repeatedly rewrite until a fixed
+point, and even failure diagnostics use a bounded path that prefers silence when
+they cannot be verified safely.
+
+See [ADR-024](adr/ADR-024-final-redaction-verification-and-fail-closed-output.md).
