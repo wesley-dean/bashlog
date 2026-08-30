@@ -1,24 +1,37 @@
-<!-- Please ensure your PR title is brief and descriptive for a good changelog entry -->
-<!-- Link to issue if there is one -->
-<!-- markdownlint-disable -->
+<!-- Keep the PR title brief, descriptive, and suitable for a changelog entry. -->
+<!-- Link an issue when one exists. -->
 
-Fixes #
+## Summary
 
-<!-- markdownlint-restore -->
+Describe the problem and the change at a level a reviewer can understand without
+reconstructing intent from the diff.
 
-<!-- Describe what the changes are -->
+## Contract / Architecture Impact
 
-## Proposed Changes
+- [ ] No observable public behavior or architectural decision changes.
+- [ ] `doc/bashlog-spec.md` is updated when observable public behavior changes.
+- [ ] Governing ADRs are updated or added when architectural intent changes.
+- [ ] `doc/decisions.md`, `AGENTS.md`, and README are updated where their summaries
+      would otherwise become stale.
 
-1. …
-2. …
-3. …
+## Implementation and Documentation
 
-## Readiness Checklist
+- [ ] Maintained Bash uses the project Doxygen standard.
+- [ ] Public function documentation agrees with the normative specification.
+- [ ] Generated files under `dist/`, `doc/reference/`, `test-results/`, and
+      `vendor/` were not edited directly.
 
-- [ ] If documentation is needed for this change, has that been included in this pull request
+## Validation
 
-### Reviewing Maintainer
+- [ ] Focused tests cover the new or changed behavior.
+- [ ] Security-sensitive changes include negative assertions where applicable.
+- [ ] All three generated artifact flavors remain behaviorally equivalent.
+- [ ] Bash 4.3 compatibility remains intact or the runtime-floor decision is
+      explicitly revisited.
+- [ ] Relevant project validation has been run (`make check`, `make test`,
+      `make test-report`, `make docs`, and/or `make deps-check`).
 
-- [ ] Label as `breaking` if this is a large fundamental change
-- [ ] Label as either `automation`, `bug`, `documentation`, `enhancement`, `infrastructure`, or `performance`
+## Additional Notes
+
+Document tradeoffs, deferred work, compatibility concerns, or reviewer context
+that does not belong in maintained project documentation.
