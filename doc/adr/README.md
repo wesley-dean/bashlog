@@ -58,6 +58,17 @@ See [`doc/decisions.md`](../decisions.md) for the concise current decision map.
 - ADR-023: Glob and ERE Redaction Semantics
 - ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 
+### Proposed
+
+- ADR-025: Optional Presentation Metadata, Tags, and Color
+- ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr
+  Transport
+
+The Proposed records document the next presentation/rendering tranche currently
+under review.  They do not supersede the Accepted public specification until the
+architecture is ratified and `doc/bashlog-spec.md`, Doxygen contracts, tests, and
+implementation are updated coherently.
+
 ## Templates
 
 New ADRs should begin with [`templates/template.md`](templates/template.md).

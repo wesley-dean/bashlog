@@ -9,13 +9,10 @@ This file is intentionally **not** a substitute for the ADR corpus.  When a
 summary and a governing ADR appear to conflict, read the ADR and surface the
 conflict rather than silently choosing the shorter wording.
 
-The ADRs listed below are Accepted and describe current architectural decisions.
-The accepted normative public behavior derived from these decisions is documented
-in [`doc/bashlog-spec.md`](bashlog-spec.md).  The specification defines function
-names, arguments, output streams, return statuses, threshold behavior, matcher
-semantics, and failure behavior; it does not replace the architectural reasoning
-in the ADRs.  Acceptance of the architecture and specification does not imply
-that the current starter-derived runtime already implements them.
+The Accepted ADRs below describe current architectural decisions.  Proposed ADRs
+are documented separately and do not supersede Accepted behavior until ratified.
+The accepted normative public behavior derived from Accepted decisions is
+documented in [`doc/bashlog-spec.md`](bashlog-spec.md).
 
 ## Accepted Decisions
 
@@ -257,3 +254,26 @@ failure diagnostics use a bounded path that prefers silence when they cannot be
 verified safely.
 
 See [ADR-024](adr/ADR-024-final-redaction-verification-and-fail-closed-output.md).
+
+## Proposed Decisions
+
+### ADR-025: Optional Presentation Metadata, Tags, and Color
+
+bashlog would add Bash-native optional timestamps, repeatable per-call tags, and
+severity-aware color for the human renderer.  Timestamping remains off by
+default, tags remain explicit, and color defaults to `auto`; logfmt output never
+contains bashlog-owned ANSI color.
+
+See [ADR-025](adr/ADR-025-optional-presentation-metadata-tags-and-color.md).
+
+### ADR-026: Adaptive Human/Logfmt Rendering and Environment-Agnostic Stderr Transport
+
+Standard error remains the universal sink, while `format=auto` would select human
+output when fd 2 is a TTY and deterministic logfmt when it is not.  Redaction
+remains explicit and developer-owned: callers create/populate the applicable
+context, then either invoke `bashlog_redact` directly or pass `--context CONTEXT`
+to a logging call, with `--` terminating logging options when needed; bashlog does
+not infer sensitivity, synthesize a default policy, apply ambient contexts, or
+detect deployment infrastructure.
+
+See [ADR-026](adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md).
