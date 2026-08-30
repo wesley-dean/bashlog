@@ -115,8 +115,12 @@ jobs:
         run: |
           rm -rf vendor
           for artifact in dist/*.bash; do
-            "${artifact}" --help >/dev/null
-            "${artifact}" run noop
+            bash --noprofile --norc -c '
+              source "$1"
+              [[ $(bashlog_level_get) == info ]] || exit 1
+              bashlog_redaction_add ctx fixed secret "[R]" || exit 1
+              [[ $(bashlog_redact ctx secret) == "[R]" ]] || exit 1
+            ' _ "${artifact}"
           done
 
       - name: Fail if Bats failed
@@ -140,9 +144,9 @@ jobs:
         run: |
           for artifact in dist/*.bash; do
             docker run --rm \
-              --env BASH_STARTER_ARTIFACT="/work/${artifact}" \
+              --env BASHLOG_ARTIFACT="/work/${artifact}" \
               --volume "${GITHUB_WORKSPACE}:/work:ro" \
               --workdir /work \
               bash:4.3 \
-              bash tests/compat-bash43.bash
+              bash tests/contract/compat-bash43.bash
           done
