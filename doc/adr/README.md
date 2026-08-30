@@ -55,6 +55,11 @@ See [`doc/decisions.md`](../decisions.md) for the concise current decision map.
 - ADR-017: Logging Pipeline, Levels, Formatting, and Emission
 - ADR-018: Redaction as an Opt-In Security Boundary
 - ADR-019: Readability, Auditability, and Rejection of Obscurity
+- ADR-020: Redaction Context Lifecycle and State Model
+- ADR-021: Redaction Rule Registration, Ordering, and Replacement Semantics
+- ADR-022: Fixed-String Redaction and Multibyte Guarantees
+- ADR-023: Glob and ERE Redaction Semantics
+- ADR-024: Final Redaction Verification and Fail-Closed Output Boundary
 
 ## Templates
 
