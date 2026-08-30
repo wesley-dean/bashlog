@@ -1,6 +1,6 @@
 # bashlog Public Behavior Specification
 
-Status: Draft
+Status: Accepted
 
 Date: 2026-08-30
 
@@ -17,11 +17,12 @@ The specification is intentionally precise.  A caller should not have to inspect
 implementation details to determine what a public function means, and an
 implementer should not have to invent public semantics while writing code.
 
-This document is currently **Draft** because ADR-013 through ADR-024 remain in
-Proposed status and the runtime implementation has not yet been written.  The
-specification therefore describes the contract proposed for the first functional
-release.  It MUST NOT be represented as already-implemented behavior until tests
-and implementation demonstrate the contract.
+This specification is **Accepted** as the normative public contract for the first
+functional release.  Acceptance records the observable behavior that
+implementation and tests must satisfy; it does not claim that the current
+starter-derived runtime already implements that behavior.  Runtime conformance
+must be demonstrated by the implementation and tests before the project describes
+the contract as implemented behavior.
 
 ## Normative Language
 
@@ -29,8 +30,8 @@ The terms MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT, and MAY are used
 normatively.
 
 Where this specification conflicts with an Accepted ADR, the ADR governs and the
-conflict must be corrected.  Where this specification depends on a Proposed ADR,
-the behavior remains provisional until the governing ADR is accepted.
+conflict must be corrected.  The specification defines observable behavior within
+the boundaries established by the Accepted ADR corpus.
 
 ## Runtime Baseline
 
@@ -70,7 +71,7 @@ private or access-controlled by Bash.
 
 ## Public API Overview
 
-The proposed initial public API is deliberately narrow:
+The initial public API is deliberately narrow:
 
 ```text
 bashlog_level_get
@@ -821,8 +822,8 @@ bashlog sink contract.
 
 ## Security Promises
 
-Subject to the governing ADRs and the exact matcher semantics above, the proposed
-initial public contract promises:
+Subject to the governing ADRs and the exact matcher semantics above, the initial
+public contract promises:
 
 1. A rule that has been accepted into a context is a security obligation for
    bashlog operations that explicitly select that context.
@@ -844,7 +845,7 @@ initial public contract promises:
 
 ## Explicit Non-Promises
 
-The proposed public contract does **not** promise:
+The public contract does **not** promise:
 
 1. automatic identification of passwords, tokens, PII, or other sensitive data;
 2. secure memory, memory locking, or reliable zeroization;
@@ -1030,8 +1031,8 @@ possible.
 
 ## Required Test Implications
 
-Before this specification can move from Draft to a stable implemented contract,
-tests SHOULD demonstrate at minimum:
+Before the accepted specification can be described as implemented behavior, tests
+SHOULD demonstrate at minimum:
 
 - source-time silence and absence of trap/shell-option/shopt mutation;
 - Bash 4.3 representative behavior;
@@ -1076,7 +1077,7 @@ expected replacement appeared while the original secret also leaked elsewhere.
 
 ## Governing Decisions
 
-This draft specification is derived primarily from:
+This accepted specification is derived primarily from:
 
 - ADR-002: Bash Runtime and Portability Baseline
 - ADR-007: Doxygen-Based Verbose Source Documentation Standard
