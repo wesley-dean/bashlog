@@ -293,3 +293,12 @@ preparation, generated README replacement is atomic, and adrctl remains outside
 all consumer artifacts and runtime behavior.
 
 See [ADR-028](adr/ADR-028-generate-committed-adr-navigation-with-pinned-adrctl.md).
+
+### ADR-029: Compose a Mermaid Relationship Graph into the Generated ADR Index
+
+The committed ADR landing page retains its generated text TOC and now also embeds
+raw Mermaid source from adrctl's shared relationship-graph model.  Make owns the
+Markdown heading, fences, `.md` link selection, composition, and atomic placement;
+adrctl owns ADR graph semantics, serialization, and node-link generation.
+
+See [ADR-029](adr/ADR-029-compose-mermaid-relationship-graph-into-generated-adr-index.md).
