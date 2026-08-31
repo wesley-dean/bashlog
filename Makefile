@@ -32,6 +32,7 @@ ADR_DIR ?= $(if $(strip $(ADRCTL_ADR_DIR)),$(strip $(ADRCTL_ADR_DIR)),$(strip $(
 ADR_INDEX_FILE ?= $(ADR_DIR)/README.md
 ADR_INDEX_INTRO ?= $(ADR_DIR)/README.intro.md
 ADR_INDEX_OUTRO ?= $(ADR_DIR)/README.outro.md
+ADR_GRAPH_LINK_PREFIX ?= https://github.com/wesley-dean/bashlog/blob/main/$(ADR_DIR)/
 REFERENCE_DOC_DIR := doc/reference
 
 VERSION ?= 0.0.0-dev
@@ -157,7 +158,8 @@ deps-check: verify-bashdeps $(DEPENDENCY_MANIFEST)
 	"$(BASHDEPS)" verify "$(DEPENDENCY_MANIFEST)"
 
 ## Regenerate the committed ADR landing page from maintained ADR source and framing.
-## ADR_INDEX_FILE may be overridden through the environment or Make command line.
+## ADR_INDEX_FILE and ADR_GRAPH_LINK_PREFIX may be overridden through the
+## environment or Make command line.
 adr-index:
 	@test -f "$(ADRCTL)" || { printf '%s\n' 'Missing documentation dependency vendor/adrctl.bash; run make deps or make all' >&2; exit 1; }
 	@test -f "$(ADR_INDEX_INTRO)" || { printf '%s\n' 'Missing maintained ADR index introduction: $(ADR_INDEX_INTRO)' >&2; exit 1; }
@@ -167,7 +169,7 @@ adr-index:
 	trap 'rm -f "$$tmp"' EXIT; \
 	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" >"$$tmp"; \
 	printf '\n%s\n\n%s\n' '## Decision Relationships' '```mermaid' >>"$$tmp"; \
-	bash "$(ADRCTL)" generate graph --format mermaid -e .md >>"$$tmp"; \
+	bash "$(ADRCTL)" generate graph --format mermaid -p "$(ADR_GRAPH_LINK_PREFIX)" -e .md >>"$$tmp"; \
 	printf '%s\n\n' '```' >>"$$tmp"; \
 	cat "$(ADR_INDEX_OUTRO)" >>"$$tmp"; \
 	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
