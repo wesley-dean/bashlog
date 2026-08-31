@@ -165,7 +165,11 @@ adr-index:
 	@mkdir -p "$(dir $(ADR_INDEX_FILE))"
 	@tmp="$(ADR_INDEX_FILE).tmp"; \
 	trap 'rm -f "$$tmp"' EXIT; \
-	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" -o "$(ADR_INDEX_OUTRO)" >"$$tmp"; \
+	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" >"$$tmp"; \
+	printf '\n%s\n\n%s\n' '## Decision Relationships' '```mermaid' >>"$$tmp"; \
+	bash "$(ADRCTL)" generate graph --format mermaid -e .md >>"$$tmp"; \
+	printf '%s\n\n' '```' >>"$$tmp"; \
+	cat "$(ADR_INDEX_OUTRO)" >>"$$tmp"; \
 	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
 	trap - EXIT
 
