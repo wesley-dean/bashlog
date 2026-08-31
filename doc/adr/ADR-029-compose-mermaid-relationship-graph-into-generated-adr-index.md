@@ -58,7 +58,7 @@ The initial required release is adrctl v0.0.12.
 
 Conceptually:
 
-```text
+````text
 adrctl generate toc -i README.intro.md
 
 ## Decision Relationships
@@ -68,7 +68,7 @@ adrctl generate toc -i README.intro.md
 ```
 
 README.outro.md
-```
+````
 
 The code fences, section heading, ordering, output destination, and atomic replacement remain Make/repository concerns.  adrctl owns ADR discovery, graph semantics, serialization, and graph-node URL generation.
 
