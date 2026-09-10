@@ -156,7 +156,7 @@ deps: $(BASHDEPS) $(DEPENDENCY_MANIFEST)
 deps-check: verify-bashdeps $(DEPENDENCY_MANIFEST)
 	"$(BASHDEPS)" verify "$(DEPENDENCY_MANIFEST)"
 
-## Regenerate the committed ADR landing page from maintained ADR source and framing.
+## Generate the ephemeral ADR landing page from maintained ADR source and framing.
 ## ADR_INDEX_FILE may be overridden through the environment or Make command line.
 adr-index:
 	@test -f "$(ADRCTL)" || { printf '%s\n' 'Missing documentation dependency vendor/adrctl.bash; run make deps or make all' >&2; exit 1; }
@@ -171,7 +171,7 @@ adr-index:
 	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
 	trap - EXIT
 
-## Generate committed ADR navigation and ephemeral Doxygen reference documentation.
+## Generate ephemeral ADR navigation and Doxygen reference documentation.
 ## Both generators consume already-prepared documentation dependency state.
 docs: adr-index
 	@test -f "$(DOXYGEN_BASH_FILTER)" || { printf '%s\n' 'Missing documentation dependency vendor/doxygen-bash.awk; run make deps or make all' >&2; exit 1; }
@@ -189,4 +189,5 @@ clean: docs-clean
 
 ## Remove all generated state, including repository dependencies.
 distclean: clean
+	rm -f "$(ADR_INDEX_FILE)"
 	rm -rf "$(VENDOR_DIR)"
