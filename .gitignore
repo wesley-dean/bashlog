@@ -48,7 +48,7 @@ local.properties
 # sbteclipse plugin
 .target
 
-# Tern plugin
+# Tern JS file
 .tern-project
 
 # TeXlipse plugin
@@ -63,7 +63,7 @@ local.properties
 # Annotation Processing
 .apt_generated/
 
-# Scala IDE specific (Scala & Java development)
+# Scala IDE specific (Scala & Java development for Eclipse)
 .cache-main
 .scala_dependencies
 .worksheet
@@ -311,7 +311,7 @@ cscope.po.out
 [._]*.s[a-v][a-z]
 [._]*.sw[a-p]
 [._]s[a-rt-v][a-z]
-[._]ss[a-gi-z][a-z]
+[._]ss[a-gi-z]
 [._]sw[a-p]
 
 # Session
@@ -364,6 +364,7 @@ $RECYCLE.BIN/
 # Bash starter generated state
 vendor/
 test-results/
+doc/adr/README.md
 doc/reference/
 megalinter-reports/
 report/
