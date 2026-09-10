@@ -21,7 +21,9 @@ EXCLUDE                = dist \
 EXCLUDE_PATTERNS       = */dist/* \
                          */tests/* \
                          */vendor/* \
-                         */doc/reference/*
+                         */doc/reference/* \
+                         */README.intro.md \
+                         */README.outro.md
 EXTENSION_MAPPING      = bash=C \
                          sh=C
 FILTER_PATTERNS        = *.bash=vendor/doxygen-bash.awk \
