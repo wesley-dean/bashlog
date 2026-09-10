@@ -38,12 +38,11 @@ make docs
 make deps-check
 ```
 
-Generated files under `dist/`, `doc/reference/`, `test-results/`, and `vendor/`
-are not maintained source and should not be edited directly.  The committed
-`doc/adr/README.md` is also generated, but intentionally remains in Git because it
-is the ADR directory's GitHub landing page.  Change its stable framing through
-`doc/adr/README.intro.md` or `doc/adr/README.outro.md`, change ADR titles in the
-ADR files themselves, then regenerate with `make adr-index`.
+Generated files under `dist/`, `doc/adr/README.md`, `doc/reference/`,
+`test-results/`, and `vendor/` are not maintained source and should not be edited
+directly.  Change ADR landing-page framing through `doc/adr/README.intro.md` or
+`doc/adr/README.outro.md`, change ADR titles in the ADR files themselves, and let
+`make adr-index` or `make docs` regenerate the ephemeral composite page.
 
 Public API additions are compatibility commitments.  Please avoid exposing an
 internal helper merely because doing so would make one implementation task more
