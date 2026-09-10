@@ -296,9 +296,21 @@ See [ADR-028](adr/ADR-028-generate-committed-adr-navigation-with-pinned-adrctl.m
 
 ### ADR-029: Compose a Mermaid Relationship Graph into the Generated ADR Index
 
-The committed ADR landing page retains its generated text TOC and now also embeds
-raw Mermaid source from adrctl's shared relationship-graph model.  Make owns the
-Markdown heading, fences, `.md` link selection, composition, and atomic placement;
-adrctl owns ADR graph semantics, serialization, and node-link generation.
+ADR-029 introduced a generated Mermaid relationship graph alongside the textual
+ADR index.  ADR-030 supersedes that publication decision after practical Doxygen
+integration showed that the graph's limited navigation value did not justify its
+renderer-specific composition, link configuration, generated volume, and
+maintenance complexity.
 
-See [ADR-029](adr/ADR-029-compose-mermaid-relationship-graph-into-generated-adr-index.md).
+See [ADR-029](adr/ADR-029-compose-mermaid-relationship-graph-into-generated-adr-index.md)
+and [ADR-030](adr/ADR-030-remove-relationship-graph-from-generated-adr-navigation.md).
+
+### ADR-030: Remove the Relationship Graph from Generated ADR Navigation
+
+The generated and committed ADR landing page returns to the linked textual index
+plus maintained introduction and conclusion fragments, with no relationship graph
+in `make adr-index` or `make docs`.  ADR-028's atomic, offline, documentation-only
+adrctl boundary remains in force, and adrctl's graph command remains available for
+explicit use outside routine publication.
+
+See [ADR-030](adr/ADR-030-remove-relationship-graph-from-generated-adr-navigation.md).
