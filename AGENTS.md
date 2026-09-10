@@ -16,9 +16,8 @@ Before consequential work:
 1. Read `README.md` for the public project contract and current project status.
 2. Read `doc/engineering-philosophy.md` for the reusable engineering posture that
    informs areas not already governed by a more specific Accepted ADR.
-3. Read `doc/decisions.md` for the concise architectural map.
-4. Read the full ADRs governing the area you intend to change; use
-   `doc/adr/README.md` as the index.
+3. Read `doc/decisions.md` for the concise architectural map and ADR links.
+4. Read the full ADRs governing the area you intend to change under `doc/adr/`.
 5. Read `doc/bashlog-spec.md` before changing public behavior.  The specification
    is the Accepted normative public contract.
 6. Read `doc/threat-model.md` before changing dependencies, sensitive-data flow,
