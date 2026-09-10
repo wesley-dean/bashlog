@@ -286,13 +286,14 @@ See [ADR-027](adr/ADR-027-configurable-severity-token-styles.md).
 
 ### ADR-028: Generate Committed ADR Navigation with a Pinned adrctl Documentation Dependency
 
-bashlog uses a pinned, bashdeps-managed adrctl artifact only for documentation to
-generate the committed `doc/adr/README.md` landing page from the ADR corpus plus
-maintained framing fragments.  `make docs` remains offline after dependency
-preparation, generated README replacement is atomic, and adrctl remains outside
-all consumer artifacts and runtime behavior.
+ADR-028 introduced the pinned documentation-only adrctl dependency, maintained
+framing, configurable output path, and atomic generated ADR index.  ADR-031 later
+supersedes only its requirement that `doc/adr/README.md` be committed; the
+mechanical generation, offline documentation boundary, and runtime separation
+remain in force.
 
-See [ADR-028](adr/ADR-028-generate-committed-adr-navigation-with-pinned-adrctl.md).
+See [ADR-028](adr/ADR-028-generate-committed-adr-navigation-with-pinned-adrctl.md)
+and [ADR-031](adr/ADR-031-make-generated-adr-landing-page-ephemeral.md).
 
 ### ADR-029: Compose a Mermaid Relationship Graph into the Generated ADR Index
 
@@ -307,10 +308,22 @@ and [ADR-030](adr/ADR-030-remove-relationship-graph-from-generated-adr-navigatio
 
 ### ADR-030: Remove the Relationship Graph from Generated ADR Navigation
 
-The generated and committed ADR landing page returns to the linked textual index
-plus maintained introduction and conclusion fragments, with no relationship graph
-in `make adr-index` or `make docs`.  ADR-028's atomic, offline, documentation-only
-adrctl boundary remains in force, and adrctl's graph command remains available for
-explicit use outside routine publication.
+Routine ADR publication remains a linked textual index plus maintained
+introduction and conclusion fragments, with no relationship graph in
+`make adr-index` or `make docs`.  ADR-031 later makes that generated landing page
+ephemeral rather than committed while preserving ADR-030's graph-removal decision
+and ADR-028's atomic, offline, documentation-only adrctl boundary.
 
-See [ADR-030](adr/ADR-030-remove-relationship-graph-from-generated-adr-navigation.md).
+See [ADR-030](adr/ADR-030-remove-relationship-graph-from-generated-adr-navigation.md)
+and [ADR-031](adr/ADR-031-make-generated-adr-landing-page-ephemeral.md).
+
+### ADR-031: Make the Generated ADR Landing Page Ephemeral
+
+bashlog now treats `doc/adr/README.md` as ignored derivative documentation state:
+maintained intro/outro framing and ADR source are composed with adrctl during
+`make adr-index`, and Doxygen consumes the resulting page as the published site's
+main page.  The offline-after-preparation boundary, atomic generation, and
+text-only navigation remain in force, while `distclean` removes the intermediate
+and repository guidance no longer assumes it exists in a pristine checkout.
+
+See [ADR-031](adr/ADR-031-make-generated-adr-landing-page-ephemeral.md).
