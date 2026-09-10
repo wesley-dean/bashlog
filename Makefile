@@ -166,6 +166,7 @@ adr-index:
 	@tmp="$(ADR_INDEX_FILE).tmp"; \
 	trap 'rm -f "$$tmp"' EXIT; \
 	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" >"$$tmp"; \
+	printf '\n' >>"$$tmp"; \
 	cat "$(ADR_INDEX_OUTRO)" >>"$$tmp"; \
 	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
 	trap - EXIT
