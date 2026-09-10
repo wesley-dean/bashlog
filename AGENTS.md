@@ -17,8 +17,8 @@ Before consequential work:
 2. Read `doc/engineering-philosophy.md` for the reusable engineering posture that
    informs areas not already governed by a more specific Accepted ADR.
 3. Read `doc/decisions.md` for the concise architectural map.
-4. Read the full ADRs governing the area you intend to change; use
-   `doc/adr/README.md` as the index.
+4. Read the full ADRs governing the area you intend to change under `doc/adr/`;
+   the ephemeral `doc/adr/README.md` index is available after `make adr-index`.
 5. Read `doc/bashlog-spec.md` before changing public behavior.  The specification
    is the Accepted normative public contract.
 6. Read `doc/threat-model.md` before changing dependencies, sensitive-data flow,
@@ -62,7 +62,8 @@ recorded in ADRs or the public contract defined by the specification.
   principles.
 - `doc/bashlog-spec.md`: Accepted normative public behavior specification.
 - `doc/decisions.md`: concise architectural decision summaries and ADR links.
-- `doc/adr/`: Accepted architectural decision records and their full reasoning.
+- `doc/adr/`: Accepted architectural decision records and maintained ADR landing-
+  page framing; the composite `README.md` is generated and ignored.
 - `doc/threat-model.md`: maintained threat model and Mermaid trust-boundary/data-
   flow diagram.
 - `doc/reference/`: generated Doxygen output; never commit it.
@@ -88,7 +89,8 @@ not as a command dispatcher.
 - `make test` builds and runs the active Bats contract against every artifact.
 - `make test-report` repeats the artifact matrix and writes JUnit XML under
   `test-results/`.
-- `make docs` is offline and consumes the prepared `bash-doxygen` filter.
+- `make docs` is offline and consumes prepared documentation dependencies,
+  including the `bash-doxygen` filter and `adrctl`.
 
 bashdeps manages repository dependencies such as scripts, filters, and assets.  It
 does not install system tools or operating-system packages.

@@ -364,6 +364,7 @@ $RECYCLE.BIN/
 # Bash starter generated state
 vendor/
 test-results/
+doc/adr/README.md
 doc/reference/
 megalinter-reports/
 report/

@@ -443,7 +443,10 @@ bashlog treats documentation as part of the architecture:
 - maintained Doxygen comments document implementation contracts beside source;
 - Bats tests provide executable evidence for observable guarantees.
 
-The complete ADR index is in [`doc/adr/README.md`](doc/adr/README.md).
+`doc/decisions.md` is the maintained ADR navigation surface in the repository.
+After dependencies are prepared, `make adr-index` generates the complete linked
+ADR index at ignored `doc/adr/README.md`; Doxygen uses that ephemeral page as the
+published site's main page.
 
 Generated Doxygen reference output lives under `doc/reference/` and is not
 committed.
