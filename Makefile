@@ -32,7 +32,6 @@ ADR_DIR ?= $(if $(strip $(ADRCTL_ADR_DIR)),$(strip $(ADRCTL_ADR_DIR)),$(strip $(
 ADR_INDEX_FILE ?= $(ADR_DIR)/README.md
 ADR_INDEX_INTRO ?= $(ADR_DIR)/README.intro.md
 ADR_INDEX_OUTRO ?= $(ADR_DIR)/README.outro.md
-ADR_GRAPH_LINK_PREFIX ?= https://github.com/wesley-dean/bashlog/blob/main/$(ADR_DIR)/
 REFERENCE_DOC_DIR := doc/reference
 
 VERSION ?= 0.0.0-dev
@@ -146,7 +145,7 @@ $(BASHDEPS): FORCE
 ## Verify the pinned bashdeps bootstrap without network access or repair.
 verify-bashdeps:
 	@test -x "$(BASHDEPS)" || { printf '%s\n' 'Missing or non-executable bashdeps bootstrap; run make deps' >&2; exit 1; }
-	@if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$(BASHDEPS_SHA256)" "$(BASHDEPS)" | sha256sum -c - >/dev/null 2>&1 || { printf '%s\n' 'bashdeps.bash digest mismatch; run make deps' >&2; exit 1; }; elif command -v shasum >/dev/null 2>&1; then [[ "$$(shasum -a 256 "$(BASHDEPS)" | awk '{print $$1}')" == "$(BASHDEPS_SHA256)" ]] || { printf '%s\n' 'bashdeps.bash digest mismatch; run make deps' >&2; exit 1; }; else printf '%s\n' 'No SHA-256 verification command is available for bashdeps.bash' >&2; exit 1; fi
+	@if command -v sha256sum >/dev/null 2>&1; then printf '%s  %s\n' "$(BASHDEPS_SHA256)" "$(BASHDEPS)" | sha256sum -c - >/dev/null 2>&1 || { printf '%s\n' 'bashdeps.bash does not match the committed SHA-256 digest; run make deps' >&2; exit 1; }; elif command -v shasum >/dev/null 2>&1; then [[ "$$(shasum -a 256 "$(BASHDEPS)" | awk '{print $$1}')" == "$(BASHDEPS_SHA256)" ]] || { printf '%s\n' 'bashdeps.bash digest mismatch; run make deps' >&2; exit 1; }; else printf '%s\n' 'No SHA-256 verification command is available for bashdeps.bash' >&2; exit 1; fi
 
 ## Synchronize manifest-managed scripts, libraries, filters, and assets; may use network.
 deps: $(BASHDEPS) $(DEPENDENCY_MANIFEST)
@@ -158,8 +157,7 @@ deps-check: verify-bashdeps $(DEPENDENCY_MANIFEST)
 	"$(BASHDEPS)" verify "$(DEPENDENCY_MANIFEST)"
 
 ## Regenerate the committed ADR landing page from maintained ADR source and framing.
-## ADR_INDEX_FILE and ADR_GRAPH_LINK_PREFIX may be overridden through the
-## environment or Make command line.
+## ADR_INDEX_FILE may be overridden through the environment or Make command line.
 adr-index:
 	@test -f "$(ADRCTL)" || { printf '%s\n' 'Missing documentation dependency vendor/adrctl.bash; run make deps or make all' >&2; exit 1; }
 	@test -f "$(ADR_INDEX_INTRO)" || { printf '%s\n' 'Missing maintained ADR index introduction: $(ADR_INDEX_INTRO)' >&2; exit 1; }
@@ -168,9 +166,6 @@ adr-index:
 	@tmp="$(ADR_INDEX_FILE).tmp"; \
 	trap 'rm -f "$$tmp"' EXIT; \
 	bash "$(ADRCTL)" generate toc -i "$(ADR_INDEX_INTRO)" >"$$tmp"; \
-	printf '\n%s\n\n%s\n' '## Decision Relationships' '```mermaid' >>"$$tmp"; \
-	bash "$(ADRCTL)" generate graph --format mermaid -p "$(ADR_GRAPH_LINK_PREFIX)" -e .md >>"$$tmp"; \
-	printf '%s\n\n' '```' >>"$$tmp"; \
 	cat "$(ADR_INDEX_OUTRO)" >>"$$tmp"; \
 	mv "$$tmp" "$(ADR_INDEX_FILE)"; \
 	trap - EXIT
