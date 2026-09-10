@@ -39,11 +39,11 @@ make deps-check
 ```
 
 Generated files under `dist/`, `doc/reference/`, `test-results/`, and `vendor/`
-are not maintained source and should not be edited directly.  The committed
-`doc/adr/README.md` is also generated, but intentionally remains in Git because it
-is the ADR directory's GitHub landing page.  Change its stable framing through
-`doc/adr/README.intro.md` or `doc/adr/README.outro.md`, change ADR titles in the
-ADR files themselves, then regenerate with `make adr-index`.
+are not maintained source and should not be edited directly.  The generated
+`doc/adr/README.md` is also ephemeral and ignored by Git.  Change its stable
+framing through `doc/adr/README.intro.md` or `doc/adr/README.outro.md`, change ADR
+titles in the ADR files themselves, then regenerate locally with `make adr-index`
+after dependency state has been prepared.
 
 Public API additions are compatibility commitments.  Please avoid exposing an
 internal helper merely because doing so would make one implementation task more
