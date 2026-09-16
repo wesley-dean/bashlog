@@ -4,7 +4,12 @@ Date: DATE
 
 ## Status
 
-STATUS
+Accepted
+
+For ADRs prepared in a pull request, merging that pull request is generally
+understood to constitute acceptance.  Record later supersession, replacement, or
+refinement in the ADR narrative and in `doc/decisions.md` rather than changing the
+status from `Accepted`.
 
 ## Intent and Documentation Posture
 

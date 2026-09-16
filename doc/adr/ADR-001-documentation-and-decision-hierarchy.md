@@ -18,10 +18,10 @@ The repository therefore needs more than accurate implementation.  It needs a
 recoverable chain from intent, to constraints, to implementation, to validation.
 
 bashlog strengthens the inherited documentation model by adding
-`doc/decisions.md`: a concise decision map containing one-to-three-sentence
-summaries of ADR decisions with direct references to the full records.  The
-summary exists to make architectural constraints easy to discover; it does not
-replace the reasoning preserved in ADRs.
+`doc/decisions.md`: a concise decision map containing generally three-to-five-
+sentence summaries of ADR decisions with direct references to the full records.
+The summary exists to make architectural constraints easy to discover; it does
+not replace the reasoning preserved in ADRs.
 
 The project intentionally follows a "more is more" posture where additional
 documentation preserves context, assumptions, boundaries, rejected alternatives,
@@ -106,6 +106,13 @@ Architecture Decision Records under `doc/adr/` are the canonical record for
 durable architectural and process decisions.  ADRs SHALL be intentionally
 complete where the decision is consequential.
 
+Every committed ADR SHALL use `Accepted` as its status.  When an ADR is introduced
+or materially changed through a pull request, merging that pull request is
+generally understood to constitute acceptance.  Later supersession, replacement,
+deprecation, and similar decision relationships SHALL be recorded in the ADR
+narrative and decision map rather than by changing the status away from
+`Accepted`.
+
 They should record, as applicable:
 
 - intent and documentation posture;
@@ -137,9 +144,11 @@ available when the reason matters.
 The project SHALL maintain `doc/decisions.md` as a concise architectural decision
 map.
 
-Each listed ADR SHALL receive a one-to-three-sentence summary that states the
-operative decision or, for a proposed ADR, clearly identifies the proposal.  Each
-summary SHALL link to the governing ADR.
+Each committed ADR SHALL receive a generally three-to-five-sentence summary that
+states the operative decision and links directly to the governing ADR.  Every
+committed ADR uses `Accepted` as its status; supersession, replacement,
+deprecation, and similar relationships are expressed as decision lineage rather
+than alternate status values.
 
 `doc/decisions.md` SHALL NOT reproduce full rationale, rejected alternatives, or
 long-form consequences.  Those belong in the ADR.
@@ -148,9 +157,11 @@ When one ADR supersedes part of another, the decision map SHOULD summarize the
 current effective rule and link to the relevant records so readers do not need to
 infer current policy from contradictory historical wording.
 
-A change that alters an ADR's operative decision SHOULD update
-`doc/decisions.md` in the same change.  Purely explanatory ADR edits that do not
-change the decision need not mechanically rewrite the summary.
+Adding or materially changing an ADR SHALL require reviewing and updating its
+`doc/decisions.md` summary in the same pull request, including earlier summaries
+whose effective interpretation changes because of a superseding or refining
+decision.  Purely explanatory ADR edits that do not materially change a decision
+MAY leave summary wording unchanged after review.
 
 ### AGENTS.md
 
@@ -282,13 +293,17 @@ problem.
 ## Operational Constraints
 
 - ADRs MUST remain the canonical source for durable architectural reasoning.
-- `doc/decisions.md` MUST provide concise decision summaries with links to the
-  governing ADRs.
-- `doc/decisions.md` summaries SHOULD be one to three sentences per ADR.
-- Proposed ADRs MUST be distinguishable from accepted decisions in the decision
-  map.
-- Changes to operative ADR decisions SHOULD update `doc/decisions.md` in the same
-  change.
+- Every committed ADR MUST use `Accepted` as its status.
+- Pull-request merge is normally the acceptance event for an ADR introduced or
+  materially changed in that pull request.
+- Supersession, replacement, deprecation, and similar relationships MUST be
+  recorded as decision lineage rather than alternate ADR status values.
+- `doc/decisions.md` MUST provide concise decision summaries with direct links to
+  the governing ADRs.
+- `doc/decisions.md` summaries SHOULD generally be three to five sentences per
+  ADR.
+- Adding or materially changing an ADR MUST review and update its decision-map
+  summary in the same pull request, including affected earlier summaries.
 - `AGENTS.md` MUST remain concise and MUST point to governing documentation rather
   than duplicate it wholesale.
 - Consequential ADRs SHOULD document promises, non-promises, and an adversary or
@@ -332,7 +347,7 @@ A comprehensive decision document could provide one central architecture manual.
 
 It was rejected because it would immediately create a second source that must be
 kept synchronized with the ADR corpus.  The decision map is intentionally short:
-one to three sentences and a link.
+generally three to five sentences and a direct link.
 
 ### Treat Tests as the Effective Specification
 
