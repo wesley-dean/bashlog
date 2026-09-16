@@ -462,3 +462,12 @@ committed.
 
 bashlog is dedicated to the public domain under CC0 1.0 Universal.  See
 [`LICENSE`](LICENSE).
+
+## Shared Coding Standards
+
+This repository adopts the complete pinned `coding_standards@v1.0.9` snapshot under `doc/standards/`; `.codingstandardrc` records its verified release digest.  Applicable imported standards are governing requirements unless an accepted local ADR or explicit policy refines them.  Presence does not imply applicability, examples remain illustrative, imported standards are not edited locally, and upgrades are reviewed repository changes rather than automatic synchronization.
+
+Authoritative shared documentation standards used here:
+
+- Bash: `doc/standards/bash/documentation-standard.md`
+

@@ -24,7 +24,7 @@ Before consequential work:
 6. Read `doc/threat-model.md` before changing dependencies, sensitive-data flow,
    output sinks, trust boundaries, matcher behavior, redaction semantics, or other
    security-relevant behavior.
-7. Read `doc/documentation-standard.md` before editing Bash source comments.
+7. Read `doc/standards/bash/documentation-standard.md` before editing Bash source comments.
 8. Read `doc/testing.md` before changing tests or generated artifacts.
 9. Read `doc/release-verification.md` before changing release behavior.
 
@@ -240,7 +240,7 @@ Public-function Doxygen documentation must agree with `doc/bashlog-spec.md` on
 arguments, streams, statuses, and failure behavior.  A disagreement is a defect
 to investigate, not an instruction to rewrite whichever document is easiest.
 
-See ADR-007, ADR-008, ADR-019, and `doc/documentation-standard.md`.
+See ADR-007, ADR-008, ADR-019, and `doc/standards/bash/documentation-standard.md`.
 
 ## Security-Sensitive Work
 
@@ -382,3 +382,12 @@ observable public behavior, update `doc/bashlog-spec.md` before or with the
 implementation, Doxygen contracts, and tests.  Compare completed work back
 against the governing ADR constraints so locally correct changes do not create
 architectural drift.
+
+## Shared Coding Standards
+
+This repository adopts the complete pinned `coding_standards@v1.0.9` snapshot under `doc/standards/`; `.codingstandardrc` records its verified release digest.  Applicable imported standards are governing requirements unless an accepted local ADR or explicit policy refines them.  Presence does not imply applicability, examples remain illustrative, imported standards are not edited locally, and upgrades are reviewed repository changes rather than automatic synchronization.
+
+Authoritative shared documentation standards used here:
+
+- Bash: `doc/standards/bash/documentation-standard.md`
+

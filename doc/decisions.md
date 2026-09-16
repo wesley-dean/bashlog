@@ -1,18 +1,27 @@
 # Architectural Decisions
 
 This document is a concise map of bashlog's Architecture Decision Records.
-Each entry summarizes the operative decision in one to three sentences and links
-to the full ADR, where the context, reasoning, promises, non-promises, failure
-model, alternatives, consequences, and follow-up questions are preserved.
+Each entry generally summarizes the operative decision in three to five sentences
+and links directly to the full ADR, where the context, reasoning, promises,
+non-promises, failure model, alternatives, consequences, and follow-up questions
+are preserved.
 
 This file is intentionally **not** a substitute for the ADR corpus.  When a
 summary and a governing ADR appear to conflict, read the ADR and surface the
 conflict rather than silently choosing the shorter wording.
 
-The Accepted ADRs below describe current architectural decisions.  Proposed ADRs
-are documented separately and do not supersede Accepted behavior until ratified.
-The accepted normative public behavior derived from Accepted decisions is
-documented in [`doc/bashlog-spec.md`](bashlog-spec.md).
+## Maintenance
+
+Every ADR in this repository uses `Accepted` as its status.  Merging a pull
+request that contains a new or materially changed ADR is generally understood to
+accept that ADR; supersession, replacement, deprecation, and similar relationships
+belong in the ADR narrative rather than in alternate status values.  Adding or
+materially changing an ADR requires reviewing and updating the corresponding
+summary here in the same pull request, including earlier summaries affected by a
+superseding or refining decision.
+
+The accepted normative public behavior derived from these decisions is documented
+in [`doc/bashlog-spec.md`](bashlog-spec.md).
 
 ## Accepted Decisions
 
@@ -327,3 +336,19 @@ text-only navigation remain in force, while `distclean` removes the intermediate
 and repository guidance no longer assumes it exists in a pristine checkout.
 
 See [ADR-031](adr/ADR-031-make-generated-adr-landing-page-ephemeral.md).
+
+## ADR-032: Adopt shared coding standards
+
+**Status:** Accepted
+
+The repository adopts the complete verified `coding_standards@v1.0.9` snapshot
+beneath `doc/standards/`, with exact release provenance recorded in
+`.codingstandardrc`.  Applicable imported standards govern where relevant while
+accepted repository-specific ADRs and explicit local policy retain precedence for
+intentional refinements; presence in the snapshot does not itself imply
+applicability.  Duplicate live documentation-standard files are removed where
+present so shared documentation rules have one authoritative managed path, while
+historical ADR text remains unchanged.  Future standards upgrades replace the
+complete snapshot through normal review rather than local edits or automatic
+synchronization.  See
+[ADR-032](adr/ADR-032-adopt-shared-coding-standards.md).

@@ -14,7 +14,7 @@ Before making a consequential change, please read:
 - `doc/bashlog-spec.md` before changing observable public behavior;
 - `doc/threat-model.md` before changing trust boundaries, sensitive-data flow,
   dependencies, output sinks, or other security-relevant behavior;
-- `doc/documentation-standard.md` before editing maintained Bash comments;
+- `doc/standards/bash/documentation-standard.md` before editing maintained Bash comments;
 - `doc/testing.md` before changing the behavior contract; and
 - `doc/release-verification.md` before changing release behavior.
 
