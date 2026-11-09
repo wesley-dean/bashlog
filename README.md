@@ -425,6 +425,24 @@ through another observable bashlog path.
 See [`doc/testing.md`](doc/testing.md) and
 [`tests/contract/README.md`](tests/contract/README.md).
 
+## Dependabot Maintenance
+
+Routine GitHub Actions version updates are checked weekly with a seven-day
+cooldown and collected in the `actions-version-updates` group, including
+eligible major, minor, and patch releases.  Security updates are separate
+and depend on the repository's security-update features being enabled.
+The current non-major auto-merge condition remains in place; a mixed
+group containing a major update is expected to require the normal
+review path.
+
+Review each dependency within a group, particularly actions that can write
+to the repository or publish release artifacts.  CI checks must exercise
+the relevant changed behavior before their success is treated as evidence.
+This configuration does not retroactively consolidate open PRs, guarantee
+one PR per week, or enforce CODEOWNER approval without branch protection.
+
+See ADR-033 for the decision, tradeoffs, and rollout boundaries.
+
 ## Documentation and Architecture
 
 bashlog treats documentation as part of the architecture:
