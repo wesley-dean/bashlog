@@ -99,6 +99,7 @@ bashlog_emergency
 
 bashlog_queue_flush
 bashlog_queue_clear
+bashlog_queue_extract
 
 bashlog_redaction_add
 bashlog_redaction_context_destroy
@@ -124,7 +125,7 @@ bashlog does not depend on a system `sysexits.h` file or external utility.
 | `64` | The caller supplied invalid arguments, an invalid level, an invalid tag, an invalid context identifier, an unknown option, an invalid presentation mode or style, or otherwise invalid API syntax. |
 | `65` | A proposed redaction rule is invalid, duplicate, unsatisfiable, or cannot be accepted under its matcher contract. |
 | `69` | A specifically requested redaction context is unavailable because it is unknown or destroyed. |
-| `70` | Redaction, final verification, timestamp acquisition, rendering, or another internal transformation could not be completed safely. |
+| `70` | Redaction, final verification, timestamp acquisition, rendering, queue-variable assignment, or another internal transformation could not be completed safely. |
 | `74` | Final logging or queue-flush emission to the selected stream failed. |
 
 Public functions MUST NOT use a non-zero status merely because a message was
@@ -770,9 +771,44 @@ resources.  There is no automatic flush, size cap, eviction, disk persistence,
 or library-installed EXIT trap.  A subshell has its own queue-state copy.
 The application owns flushing, memory usage, traps, and exit-status handling.
 
-Lossless caller-variable extraction (bashlog_queue_extract, task #39) is **not
-yet implemented**.  Global/context default destination get/set/reset (task
-#40) is **not yet implemented**.
+### Lossless Queue Extraction
+
+```text
+bashlog_queue_extract NAME VARIABLE
+```
+
+NAME follows the same strict [A-Za-z0-9]+ grammar as flush/clear and omits the
+queue: prefix.  VARIABLE must be an ordinary Bash scalar identifier matching
+[A-Za-z_][A-Za-z0-9_]*, excluding Bash-managed special names, environment and
+execution-control variables, and internal bashlog variables.  A previously
+undefined target is created; a preexisting ordinary un-attributed scalar is
+replaced.  Existing arrays, namerefs, readonly variables, integer variables,
+exported variables, and other attributed targets are deliberately rejected:
+assignment must not change the output, execute arithmetic expressions,
+indirect through a nameref, or leak queued text through an exported variable.
+
+On success, bashlog assigns the **exact concatenation** of complete,
+already-rendered, newline-terminated records to VARIABLE, then clears NAME.
+All embedded and **trailing** newlines are preserved.  No command substitution
+is used to capture record bytes; Bash's command-substitution newline trimming
+would violate this contract.  No eval, code generation, external command,
+re-rendering, new redaction, or output to either standard stream is involved.
+
+Extracting an empty or nonexistent queue succeeds and assigns an empty string.
+Invalid arguments, queue names, variable identifiers, or unsafe target
+attributes return 64.  An otherwise valid assignment that fails returns 70.
+Every failure leaves queued bytes intact.  Queue content is now caller-owned
+once successfully extracted; subsequent transformation, display, or reenqueuing
+is outside bashlog's prior enqueue-time verification guarantee.  Logging a
+combined extracted block through a normal severity helper creates a **new**
+record rather than reconstructing each original record's severity, timestamp,
+tags, or other metadata.  Bash cannot preserve embedded NUL bytes.
+
+Variable extraction is a separate queue operation, not a destination type.
+The destination grammar does not accept var:VARIABLE.
+
+Global and context-specific destination get/set/reset remain planned for
+task #40 and are **not yet implemented**.
 
 ### Downstream Transport
 
