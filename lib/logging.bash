@@ -213,7 +213,7 @@ bashlog_queue_extract() {
 
   # Use Bash 4.3-compatible declare introspection.  Accept only existing
   # un-attributed scalars or new names; never evaluate a variable name as code.
-  if __bashlog_extract_declaration=$(declare -p "${__bashlog_extract_target}" 2>/dev/null); then
+  if __bashlog_extract_declaration=$(builtin declare -p "${__bashlog_extract_target}" 2>/dev/null); then
     case ${__bashlog_extract_declaration} in
       'declare -- '*) ;;
       *) return 64 ;;
@@ -221,7 +221,7 @@ bashlog_queue_extract() {
   fi
 
   __bashlog_extract_records=${__bashlog_queue_records[$__bashlog_extract_name]-}
-  if ! printf -v "${__bashlog_extract_target}" '%s' "${__bashlog_extract_records}" 2>/dev/null; then
+  if ! builtin printf -v "${__bashlog_extract_target}" '%s' "${__bashlog_extract_records}" 2>/dev/null; then
     return 70
   fi
 
