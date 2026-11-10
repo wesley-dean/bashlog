@@ -138,14 +138,14 @@ BASH
     bashlog_redaction_add auth fixed secret '[R]' || exit
     bashlog_destination_set --to queue:Global || exit
     bashlog_destination_set --context auth --to queue:Context || exit
-    bashlog_info --context auth --to STDOUT 'secret=%s' secret || exit
+    bashlog_info --context auth --to STDOUT 'value=%s' secret || exit
     bashlog_info --context auth 'second' || exit
     bashlog_info 'third' || exit
     bashlog_queue_flush Context --to STDERR || exit
     bashlog_queue_flush Global --to STDERR
 BASH
   [ "$status" -eq 0 ]
-  [ "$output" = 'info: secret=[R]' ]
+  [ "$output" = 'info: value=[R]' ]
   [ "$stderr" = $'info: second\ninfo: third' ]
 }
 
