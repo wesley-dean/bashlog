@@ -51,49 +51,7 @@ bashlog_info --to STDOUT 'direct-stdout' >"${stdout_file}" 2>"${stderr_file}" ||
 bashlog_info --to queue:Compat 'first' || fail 'enqueue first'
 bashlog_warning --to queue:Compat 'second' || fail 'enqueue second'
 bashlog_queue_flush Compat --to STDOUT >"${stdout_file}" 2>"${stderr_file}" || fail 'flush queue stdout'
-[[ $(<"${stdout_file}") ==  || fail 'set logfmt format'
-bashlog_info --tag compat 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stderr_file}" || fail 'logfmt info call'
-[[ ! -s ${stdout_file} ]] || fail 'logfmt info stdout'
-[[ $(<"${stderr_file}") == 'level=info tag=compat msg="compatibility=bash43"' ]] || fail 'logfmt rendering'
-
-bashlog_timestamp_set utc || fail 'set UTC timestamp'
-bashlog_info 'timestamp-check' >"${stdout_file}" 2>"${stderr_file}" || fail 'UTC timestamp log call'
-[[ ! -s ${stdout_file} ]] || fail 'UTC timestamp stdout'
-timestamp_record=$(<"${stderr_file}")
-if [[ ${timestamp_record} != ts=????-??-??T??:??:??Z\ level=info\ msg=\"timestamp-check\" ]]; then
-  printf 'bash43 UTC timestamp observed: %q\n' "${timestamp_record}" >&2
-  fail 'UTC timestamp rendering'
-fi
-bashlog_timestamp_set off || fail 'disable timestamp'
-bashlog_format_set human || fail 'restore human format'
-
-bashlog_redaction_add auth fixed 'secret' '[R]' || fail 'register fixed rule'
-[[ $(bashlog_redact auth 'value=secret') == 'value=[R]' ]] || fail 'standalone fixed redaction'
-
-bashlog_info --context auth 'value=%s' secret >"${stdout_file}" 2>"${stderr_file}" || fail 'logger-managed fixed redaction call'
-[[ ! -s ${stdout_file} ]] || fail 'logger-managed fixed redaction stdout'
-[[ $(<"${stderr_file}") == 'info: value=[R]' ]] || fail 'logger-managed fixed redaction rendering'
-
-bashlog_redaction_add auth glob 'token-???' '[TOKEN]' || fail 'register glob rule'
-[[ $(bashlog_redact auth 'token-abc') == '[TOKEN]' ]] || fail 'glob redaction'
-
-bashlog_redaction_add auth ere '[0-9]{3}-[0-9]{2}-[0-9]{4}' '[SSN]' || fail 'register ERE rule'
-[[ $(bashlog_redact auth '123-45-6789') == '[SSN]' ]] || fail 'ERE redaction'
-
-bashlog_redaction_context_destroy auth || fail 'destroy context'
-bashlog_redact auth 'secret' >"${stdout_file}" 2>"${stderr_file}"
-[[ $? -eq 69 ]] || fail 'destroyed context status'
-[[ ! -s ${stdout_file} ]] || fail 'destroyed context stdout'
-
-bashlog_redaction_add verify fixed alpha '[A]' || fail 'register verification rule one'
-bashlog_redaction_add verify fixed beta alpha || fail 'register verification rule two'
-bashlog_redact verify beta >"${stdout_file}" 2>"${stderr_file}"
-[[ $? -eq 70 ]] || fail 'cross-rule verification status'
-[[ ! -s ${stdout_file} ]] || fail 'cross-rule verification stdout'
-[[ $(<"${stderr_file}") == 'bashlog: message suppressed' ]] || fail 'cross-rule verification diagnostic'
-
-exit 0
-info: first\nwarning: second' ]] || fail 'FIFO queue output'
+[[ $(<"${stdout_file}") == $'info: first\nwarning: second' ]] || fail 'FIFO queue output'
 [[ ! -s ${stderr_file} ]] || fail 'FIFO queue stderr'
 bashlog_queue_flush Compat >"${stdout_file}" 2>"${stderr_file}" || fail 'empty queue flush'
 [[ ! -s ${stdout_file} && ! -s ${stderr_file} ]] || fail 'empty queue silent'
