@@ -63,6 +63,19 @@ bashlog_info --to queue:Bad_Name invalid >"${stdout_file}" 2>"${stderr_file}"
 [[ $? -eq 64 ]] || fail 'queue name validation'
 [[ ! -s ${stdout_file} && ! -s ${stderr_file} ]] || fail 'invalid queue silent'
 
+bashlog_info --to queue:Extract 'first' || fail 'extract enqueue first'
+bashlog_warning --to queue:Extract 'second' || fail 'extract enqueue second'
+bashlog_queue_extract Extract extracted || fail 'queue extract'
+[[ ${extracted} == $'info: first\nwarning: second\n' ]] || fail 'lossless extraction bytes'
+bashlog_queue_flush Extract >"${stdout_file}" 2>"${stderr_file}" || fail 'extracted queue flush'
+[[ ! -s ${stdout_file} && ! -s ${stderr_file} ]] || fail 'extracted queue drained'
+readonly locked=existing
+bashlog_info --to queue:ReadOnly 'preserved' || fail 'readonly enqueue'
+bashlog_queue_extract ReadOnly locked
+[[ $? -eq 64 ]] || fail 'readonly extraction status'
+bashlog_queue_flush ReadOnly --to STDOUT >"${stdout_file}" 2>"${stderr_file}" || fail 'readonly queue flush'
+[[ $(<"${stdout_file}") == 'info: preserved' ]] || fail 'readonly extraction keeps queue'
+
 bashlog_format_set logfmt || fail 'set logfmt format'
 bashlog_info --tag compat 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stderr_file}" || fail 'logfmt info call'
 [[ ! -s ${stdout_file} ]] || fail 'logfmt info stdout'

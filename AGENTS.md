@@ -159,6 +159,7 @@ bashlog_emergency
 
 bashlog_queue_flush
 bashlog_queue_clear
+bashlog_queue_extract
 
 bashlog_redaction_add
 bashlog_redaction_context_destroy
@@ -202,8 +203,10 @@ Important public semantics include:
   preserves caller order.
 - Automatic host/deployment metadata, arbitrary caller-selected descriptors,
   direct file/network/syslog sinks, and `bashlog_die` remain outside the contract.
-- ADR-034's queue extraction and configurable destination defaults are not yet
-  implemented; keep them out of the public API until tasks #39 and #40.
+- ADR-034 supports lossless extraction into an ordinary caller-owned scalar;
+  it never re-verifies extracted bytes against subsequently added rules.
+- ADR-034's configurable destination defaults remain unimplemented pending
+  task #40; do not document their APIs as available before they ship.
 - Shared public return statuses are defined in `doc/bashlog-spec.md`.
 
 Do not expand the public surface merely because an internal helper is convenient
