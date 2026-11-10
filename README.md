@@ -61,53 +61,7 @@ bashlog_queue_flush errors --to STDERR
 bashlog_queue_clear errors
 ```
 
-A destination must match `^(STDERR|STDOUT|queue:[A-Za-z0-9]+)# bashlog
-
-bashlog is a sourceable pure-Bash logging library built around predictable
-behavior, explicit developer-owned redaction, and a small auditable runtime.
-
-The project is currently **pre-release**.  It targets Bash 4.3 or newer and uses
-only Bash language facilities and builtins at runtime.
-
-## Quick Start
-
-Source a built or pinned bashlog artifact, then log normally:
-
-```bash
-source "${project_root}/vendor/bashlog.bash"
-
-bashlog_info "Application started."
-bashlog_warning 'Configuration file %s is deprecated' "${config_file}"
-bashlog_error 'Request %s failed with status %s' "${request_id}" "${status}"
-```
-
-Routine log records go to standard error.  Standard output remains available for
-application data, pipelines, and command substitution.
-
-By default, bashlog adapts presentation only to whether standard error is a
-terminal:
-
-```text
-stderr is a TTY      -> human rendering with severity styling
-stderr is not a TTY  -> deterministic logfmt without ANSI
-```
-
-So an interactive call may look like:
-
-```text
-info: Application started.
-```
-
-while the same call under redirected or captured stderr becomes:
-
-```text
-level=info msg="Application started."
-```
-
-No container, init system, service manager, CI platform, or logging backend is
-detected or guessed.
-
-.  Names
+A destination must match `^(STDERR|STDOUT|queue:[A-Za-z0-9]+)$`.  Names
 are case-sensitive, ASCII alphanumeric, and may not contain underscores,
 dashes, or spaces.  Using `--to STDOUT` is an explicit choice to write log
 records into the application's normally data-oriented stream.
@@ -125,9 +79,23 @@ limit, automatic flush, persistence, or library-managed exit traps: they
 consume Bash-process memory until cleared, flushed, or process termination.
 An empty or nonexistent queue is a successful no-op for flush and clear.
 
-The additional ADR-034 APIs for extracting a queue into a variable and
-configuring global/context-specific default destinations are not yet shipped
-(tasks #39 and #40).
+To move an entire queue into a caller variable without emitting it:
+
+```bash
+bashlog_error --to queue:errors 'request failed'
+bashlog_queue_extract errors buffer
+printf '%s' "$buffer"
+```
+
+Extraction assigns the complete, already-rendered text to an ordinary Bash
+scalar, **preserving all trailing newlines**, then clears the queue.  An empty
+or nonexistent queue produces an empty variable.  Unsafe variable identifiers,
+readonly values, arrays, namerefs, integer scalars, exported variables, and
+Bash special variables are rejected without consuming the queue.  Treat the
+extracted bytes as caller-owned data; logging them again creates a new record.
+
+Global and context-specific default destination configuration remain planned
+under task #40 and are not yet shipped.
 
 ## Redaction in One Minute
 
