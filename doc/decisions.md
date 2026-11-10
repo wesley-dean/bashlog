@@ -363,3 +363,19 @@ The change preserves repository governance and leaves open PR limits unchanged
 until backlog cleanup, with high-risk actions requiring targeted review.
 
 See [ADR-033](adr/ADR-033-consolidate-scheduled-github-actions-updates.md).
+
+## ADR-034: Explicit Destinations, Context Defaults, and Deferred Logging Queues
+
+Logging gains an explicit destination model with uppercase `STDERR`/`STDOUT` and
+case-sensitive `queue:NAME` destinations, retaining immediate STDERR by default.
+Per-call `--to` overrides context-specific and global destination defaults;
+named queues store already rendered, redacted, verified records in FIFO order,
+without retroactive redaction after rules change or contexts are destroyed.
+Caller-controlled flushing, clearing, and lossless variable extraction preserve
+the whole queue on failed delivery, while partial writes may cause duplicates
+on retry and queues remain unbounded process-local memory.  This decision
+refines ADR-024 and ADR-026 for deferred emission but does not make the proposed
+API available before the public specification, implementation, and tests are
+updated.
+
+See [ADR-034](adr/ADR-034-explicit-destinations-and-deferred-logging-queues.md).
