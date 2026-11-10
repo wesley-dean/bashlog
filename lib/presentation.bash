@@ -11,16 +11,18 @@
 ## logging module supplies semantic fields that are already protected when an
 ## explicit redaction context was selected.  This module serializes those fields;
 ## it does not discover secrets, choose redaction policy, inspect deployment
-## infrastructure, or choose a transport other than the caller-provided standard
-## error stream.
+## infrastructure, or choose a transport.  The logger passes the descriptor
+## selected by the destination to the presentation helpers.
 ##
 ## Automatic behavior is intentionally narrow.  `format=auto` and `color=auto`
-## inspect only Bash's `[[ -t 2 ]]` result.  They do not infer systemd, Docker,
+## inspect only the selected Bash descriptor's TTY result (fd 2 for queues
+## at enqueue time).  They do not infer systemd, Docker,
 ## Podman, containers, init systems, logging drivers, or other infrastructure.
 ## @see doc/bashlog-spec.md
 ## @see doc/adr/ADR-025-optional-presentation-metadata-tags-and-color.md
 ## @see doc/adr/ADR-026-adaptive-human-logfmt-rendering-and-stderr-transport.md
 ## @see doc/adr/ADR-027-configurable-severity-token-styles.md
+## @see doc/adr/ADR-034-explicit-destinations-and-deferred-logging-queues.md
 
 ## @var __bashlog_format_mode
 ## @brief Active renderer mode: auto, human, or logfmt.
@@ -153,8 +155,8 @@ bashlog_color_get() {
 ## @fn bashlog_color_set()
 ## @brief Changes severity-aware ANSI color policy for the human renderer.
 ## @details
-## `never` disables bashlog-owned ANSI, `auto` enables it only when fd 2 is a
-## terminal, and `always` enables it whenever the human renderer is selected.
+## `never` disables bashlog-owned ANSI, `auto` uses the selected output
+## descriptor (fd 2 for queued records), and `always` enables human styling.
 ## Logfmt output never receives bashlog-owned ANSI regardless of this setting.
 ## Per-level appearance is configured independently with
 ## `bashlog_level_style_set`.
@@ -335,17 +337,25 @@ __bashlog_tag_valid() {
 ## @fn __bashlog_format_resolve()
 ## @brief Resolves the configured renderer for the current logging operation.
 ## @details
-## `auto` means exactly TTY stderr -> human, otherwise logfmt.  No environment,
-## process, filesystem, service-manager, or container detection occurs.
+## `auto` chooses human for a TTY at the selected descriptor (fd 1 or fd 2),
+## otherwise logfmt.  Deferred records observe fd 2 at enqueue time.
+## @param fd Effective rendering descriptor, 1 or 2.
 ## @retval 0 A renderer was selected and stored in `__bashlog_resolved_format`.
 ## @retval 70 Internal presentation state is invalid.
 __bashlog_format_resolve() {
+  local fd=${1-}
+
+  if [[ ${fd} != 1 && ${fd} != 2 ]]; then
+    __bashlog_resolved_format=
+    return 70
+  fi
+
   case ${__bashlog_format_mode} in
     human | logfmt)
       __bashlog_resolved_format=${__bashlog_format_mode}
       ;;
     auto)
-      if [[ -t 2 ]]; then
+      if [[ -t ${fd} ]]; then
         __bashlog_resolved_format=human
       else
         __bashlog_resolved_format=logfmt
@@ -479,15 +489,22 @@ __bashlog_human_color_code() {
 
 ## @fn __bashlog_human_color_enabled()
 ## @brief Determines whether the current human record should style its severity token.
+## @param fd Effective rendering descriptor, 1 or 2.
 ## @retval 0 Styling may be emitted.
 ## @retval 1 Styling must not be emitted.
 ## @retval 70 Internal color state is invalid.
 __bashlog_human_color_enabled() {
+  local fd=${1-}
+
+  if [[ ${fd} != 1 && ${fd} != 2 ]]; then
+    return 70
+  fi
+
   case ${__bashlog_color_mode} in
     never) return 1 ;;
     always) return 0 ;;
     auto)
-      if [[ -t 2 ]]; then
+      if [[ -t ${fd} ]]; then
         return 0
       fi
       return 1
@@ -559,13 +576,14 @@ __bashlog_logfmt_quote() {
 ## @fn __bashlog_render_human()
 ## @brief Renders semantic fields into the compact human representation.
 ## @details
-## Arguments are LEVEL, TIMESTAMP, MESSAGE, then zero or more TAG values.  Style,
-## when enabled, decorates only the severity token and is reset before tag/message
+## Arguments are LEVEL, TIMESTAMP, MESSAGE, TTY_FD, then zero or more TAG values.
+## Style decorates only the severity token and resets before tag/message
 ## text is appended.  A configured `default normal` style emits no bashlog-owned
 ## SGR bytes even when global color mode permits styling.
 ## @param level Canonical severity.
 ## @param timestamp Generated timestamp or empty string.
 ## @param message Formatted caller message, already redacted when requested.
+## @param fd Effective rendering descriptor (1 or 2).
 ## @param tags Zero or more caller tags, already redacted when requested.
 ## @retval 0 The rendered record was written to `__bashlog_render_result`.
 ## @retval 70 Presentation state is invalid.
@@ -573,13 +591,14 @@ __bashlog_render_human() {
   local level=$1
   local timestamp=$2
   local message=$3
-  shift 3
+  local fd=$4
+  shift 4
   local candidate=
   local level_text=${level}
   local tag
   local color_status
 
-  __bashlog_human_color_enabled
+  __bashlog_human_color_enabled "${fd}"
   color_status=$?
   if (( color_status == 70 )); then
     return 70
@@ -652,25 +671,32 @@ __bashlog_render_logfmt() {
 }
 
 ## @fn __bashlog_render_record()
-## @brief Selects and executes one renderer for a semantic log record.
+## @brief Selects and executes the renderer for the chosen destination.
 ## @details
-## Arguments are LEVEL, TIMESTAMP, MESSAGE, then zero or more TAG values.  The
-## resolved renderer is selected for each logging operation so ordinary stderr
-## redirection can change `auto` behavior without changing application source.
+## Arguments are LEVEL, TIMESTAMP, MESSAGE, TTY_FD, then optional TAG values.
+## TTY_FD is 1 for immediate STDOUT and 2 for immediate STDERR or enqueuing;
+## records are rendered once when logged, never again when the queue is flushed.
 ## @param level Canonical severity.
 ## @param timestamp Generated timestamp or empty string.
 ## @param message Formatted caller message.
+## @param fd Effective rendering descriptor (1 or 2).
 ## @param tags Zero or more caller tags.
-## @retval 0 Rendering completed and `__bashlog_render_result` contains the record.
+## @retval 0 Rendering completed in __bashlog_render_result.
 ## @retval 70 Renderer selection or rendering failed.
 __bashlog_render_record() {
-  if ! __bashlog_format_resolve; then
+  local level=$1
+  local timestamp=$2
+  local message=$3
+  local fd=$4
+  shift 4
+
+  if ! __bashlog_format_resolve "${fd}"; then
     return 70
   fi
 
   case ${__bashlog_resolved_format} in
-    human) __bashlog_render_human "$@" ;;
-    logfmt) __bashlog_render_logfmt "$@" ;;
+    human) __bashlog_render_human "${level}" "${timestamp}" "${message}" "${fd}" "$@" ;;
+    logfmt) __bashlog_render_logfmt "${level}" "${timestamp}" "${message}" "$@" ;;
     *) return 70 ;;
   esac
 }

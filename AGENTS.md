@@ -54,7 +54,7 @@ recorded in ADRs or the public contract defined by the specification.
   validation, logfmt encoding, global color policy, per-severity token styles,
   and human/logfmt rendering.
 - `lib/logging.bash`: generic logger, canonical severity helpers, logging option
-  parsing, redaction/presentation ordering, and standard-error emission.
+  parsing, redaction/presentation ordering, immediate streams, and FIFO queues.
 - `tests/contract/`: active Bats public behavior and security contract.
 - `tests/contract/compat-bash43.bash`: representative Bash 4.3 compatibility
   contract executed against every generated artifact.
@@ -157,6 +157,9 @@ bashlog_critical
 bashlog_alert
 bashlog_emergency
 
+bashlog_queue_flush
+bashlog_queue_clear
+
 bashlog_redaction_add
 bashlog_redaction_context_destroy
 bashlog_redact
@@ -169,8 +172,8 @@ Important public semantics include:
   invokes no external commands.
 - The default logging threshold is `info`.
 - Canonical severity names are full names rather than short aliases.
-- Routine logging goes to standard error; standard output remains an application
-  data channel.
+- Routine logging defaults to standard error.  Explicit --to STDOUT emits to
+  standard output, and --to queue:NAME defers fully processed records.
 - `bashlog_redact` writes successful transformed output to standard output without
   adding a newline.
 - Logging calls select redaction explicitly with `--context CONTEXT`; there is no
@@ -179,8 +182,8 @@ Important public semantics include:
   logging; both redaction workflows are first-class public behavior.
 - `--` terminates bashlog logging-option parsing when a format string could be
   interpreted as an option.
-- The default format mode is `auto`: TTY stderr selects human rendering and
-  non-TTY stderr selects deterministic logfmt.
+- The default format mode is `auto`: a TTY on the selected immediate stream
+  chooses human, otherwise logfmt; queued records inspect fd 2 at enqueue time.
 - Timestamp mode defaults to `off`; `utc` and `local` use Bash-native time
   formatting without external `date`.
 - Color mode defaults to `auto`; `never|auto|always` decides whether human
@@ -197,8 +200,10 @@ Important public semantics include:
   per-level style configuration.
 - Repeatable `--tag TAG` metadata uses the documented ASCII token grammar and
   preserves caller order.
-- Automatic host/deployment metadata, caller-selected file descriptors, syslog,
-  network sinks, and `bashlog_die` remain outside the contract.
+- Automatic host/deployment metadata, arbitrary caller-selected descriptors,
+  direct file/network/syslog sinks, and `bashlog_die` remain outside the contract.
+- ADR-034's queue extraction and configurable destination defaults are not yet
+  implemented; keep them out of the public API until tasks #39 and #40.
 - Shared public return statuses are defined in `doc/bashlog-spec.md`.
 
 Do not expand the public surface merely because an internal helper is convenient

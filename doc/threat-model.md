@@ -49,10 +49,12 @@ bashlog's security objectives are intentionally bounded.
 The threat model is concerned with protecting or preserving:
 
 - values and patterns explicitly entrusted to redaction contexts;
-- caller messages and tags before they reach stderr;
+- caller messages and tags before they reach a selected stream or in-memory queue;
 - the integrity of severity, threshold, renderer, timestamp, color, and style
   configuration;
-- stdout as a caller-owned application-data channel;
+- stdout as a caller-owned application-data channel unless explicitly selected
+  for a log record or queue flush;
+- completed, verified records retained by named queues in Bash process memory;
 - caller shell state at source time and during ordinary operation;
 - the integrity of generated release artifacts and their checksum companions;
 - the integrity of dependency bytes used to build, test, document, and release
@@ -97,8 +99,11 @@ flowchart LR
         verify[Final verification]
     end
 
+    queue[Verified in-memory queue]
+    flush[Caller-invoked queue flush]
     stderr[stderr]
-    downstream[Terminal / file / service manager / container / collector]
+    stdout[stdout]
+    downstream[Terminal / pipe / service manager / collector]
 
     caller --> parse
     untrusted --> parse
@@ -107,7 +112,13 @@ flowchart LR
     redact --> render
     render --> verify
     verify --> stderr
+    verify --> stdout
+    verify --> queue
+    queue --> flush
+    flush --> stderr
+    flush --> stdout
     stderr --> downstream
+    stdout --> downstream
 
     subgraph supply[Build and supply-chain boundary]
         source[Maintained source]
@@ -124,9 +135,13 @@ flowchart LR
 
 The important boundary is not merely the box labeled `bashlog`.  A redaction
 context becomes security-relevant only when the caller explicitly selects it, and
-bashlog's confidentiality guarantee ends when verified bytes are emitted to
-stderr.  Downstream storage, transport, parsing, display, retention, and access
-control belong to the consuming environment.
+bashlog's selected-context protection is applied and finally verified before an
+immediate stream write or insertion into a named queue.  Buffered records are
+immutable through bashlog's public queue operations; flush replays those bytes
+without re-verifying against subsequent context-rule additions.  The boundary
+ends at immediate output, queue extraction (future task #39), or a completed
+flush.  Downstream storage, transport, parsing, retention, and access control
+belong to the consuming environment.
 
 ### Caller to bashlog
 
@@ -150,11 +165,19 @@ ANSI styling.
 
 The completed rendered record is then verified again against the selected context.
 
-### bashlog to stderr
+### bashlog to selected streams or process-local queues
 
-stderr is the universal bashlog sink.  Once bytes are written, downstream storage,
-forwarding, parsing, display, retention, and access control belong to the caller's
-environment.
+STDERR remains the default.  A caller may explicitly opt into immediate STDOUT
+or an in-memory queue using --to.  After a selected context has been applied,
+final verification happens before immediate stream emission or queue insertion.
+A queue retains only completed, already verified rendered records and replays
+those exact bytes upon flush.  Changes to context rules cannot retroactively
+rewrite the earlier record.  An unsuccessful flush keeps the full queue, even
+if an earlier portion reached the downstream consumer.
+
+Queues have no memory limit, persistence, or automatic draining, and clearing
+is not secure erasure.  Once bytes are written to a stream, forwarding, parsing,
+display, retention, and access control belong to the consuming environment.
 
 ### Maintained source to generated artifacts
 
@@ -193,7 +216,8 @@ bashlog_LEVEL / bashlog_log
     -> renderer serialization
     -> optional severity styling
     -> final verification when context selected
-    -> stderr
+    -> immediate STDERR/STDOUT or verified queue insertion
+    -> optional later queue flush to STDERR/STDOUT
 ```
 
 No runtime path intentionally invokes a helper subprocess or network transport.
@@ -406,6 +430,25 @@ explicitly protected record over availability of that record.
 avoid unnecessary sensitive data in messages and design observability so a
 suppressed protected record is not the only source of critical state.
 
+### T13: Deferred output holds outdated policy or exhausts process memory
+
+A selected context protects a record at enqueue time; later rule additions do
+not change that stored text.  A sensitive value newly identified by policy
+can therefore remain in memory and later be flushed exactly as originally
+verified.  The caller owns flushing, discarding, and any reprocessing of
+earlier records.  bashlog does not promise retroactive protection.
+
+An application that accumulates unbounded records can exhaust its own Bash
+process memory.  An application that exits without draining loses buffered
+records.  A failed flush retains all records and can duplicate partially
+emitted output on retry.  The queue's lifetime, memory budget, and delivery
+retry strategy are application responsibilities, not hidden library policy.
+
+Mitigations include restrictive destination validation, verification before
+queue insertion, no storage of raw semantic fields for deferred redaction,
+byte-preserving flush, explicit clear/flush APIs, and tests for failure
+preservation and sensitive-content non-disclosure.
+
 ## Explicit Non-Goals
 
 This threat model does not claim protection against:
@@ -420,7 +463,9 @@ This threat model does not claim protection against:
 - Unicode normalization equivalence;
 - embedded NUL data;
 - arbitrary downstream parser/evaluator behavior;
-- secrecy of application data after it leaves bashlog's stderr boundary; or
+- secrecy of application data after it leaves a selected bashlog stream or is
+  extracted into caller-owned storage;
+- guaranteed replay under later redaction rules or secure queue memory erasure; or
 - vulnerabilities in a dependency merely because its bytes were checksum
   verified.
 
@@ -433,7 +478,9 @@ Security claims should be supported by multiple forms of evidence:
 - ADR-019: readability/auditability requirements;
 - ADR-020 through ADR-023: context/rule/matcher semantics;
 - ADR-024: final fail-closed verification;
-- ADR-026: semantic-data-before-presentation ordering and stderr boundary;
+- ADR-026: semantic-data-before-presentation ordering and default STDERR;
+- ADR-034: explicit destinations, enqueue-time verification, queue failure
+  preservation, caller-owned memory/lifecycle, and deferred-write risks;
 - `doc/bashlog-spec.md`: normative observable behavior;
 - `tests/contract/`: positive and negative public/security tests;
 - `tests/contract/compat-bash43.bash`: representative behavior at the supported

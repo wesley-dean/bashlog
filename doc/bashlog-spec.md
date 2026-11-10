@@ -97,6 +97,9 @@ bashlog_critical
 bashlog_alert
 bashlog_emergency
 
+bashlog_queue_flush
+bashlog_queue_clear
+
 bashlog_redaction_add
 bashlog_redaction_context_destroy
 bashlog_redact
@@ -122,7 +125,7 @@ bashlog does not depend on a system `sysexits.h` file or external utility.
 | `65` | A proposed redaction rule is invalid, duplicate, unsatisfiable, or cannot be accepted under its matcher contract. |
 | `69` | A specifically requested redaction context is unavailable because it is unknown or destroyed. |
 | `70` | Redaction, final verification, timestamp acquisition, rendering, or another internal transformation could not be completed safely. |
-| `74` | A final logging emission to standard error failed. |
+| `74` | Final logging or queue-flush emission to the selected stream failed. |
 
 Public functions MUST NOT use a non-zero status merely because a message was
 suppressed by log-level policy.  Routine threshold suppression is successful
@@ -262,12 +265,13 @@ descriptor state.
 `auto` means exactly:
 
 ```text
-stderr is a TTY      -> human
-stderr is not a TTY  -> logfmt
+selected stream is a TTY      -> human
+selected stream is not a TTY  -> logfmt
 ```
 
 The decision is made for each eligible logging operation using Bash
-`[[ -t 2 ]]`.  bashlog does not inspect systemd, journald, Docker, Podman,
+`[[ -t FD ]]`: fd 2 for default/explicit STDERR and for queue append, or fd 1
+for immediate explicit STDOUT.  bashlog does not inspect systemd, journald, Docker, Podman,
 Kubernetes, Swarm, OpenRC, cgroups, process ancestry, operating-system identity,
 or environment markers to choose a renderer.
 
@@ -336,8 +340,8 @@ Color mode controls whether bashlog-owned severity styling may be emitted by the
 human renderer:
 
 - `never` emits no bashlog-owned ANSI SGR sequences;
-- `auto` uses the configured severity style only when standard error is a TTY
-  according to `[[ -t 2 ]]`;
+- `auto` uses the configured severity style only when the selected effective
+  descriptor is a TTY (fd 2 for STDERR or queues at enqueue time, fd 1 for STDOUT);
 - `always` uses the configured severity style whenever the human renderer is
   selected.
 
@@ -495,14 +499,14 @@ shape.
 ### Generic Logger
 
 ```text
-bashlog_log LEVEL [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
+bashlog_log LEVEL [--context CONTEXT] [--to DESTINATION] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
 ### Severity Helpers
 
 ```text
-bashlog_info [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
-bashlog_warning [--context CONTEXT] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
+bashlog_info [--context CONTEXT] [--to DESTINATION] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
+bashlog_warning [--context CONTEXT] [--to DESTINATION] [--tag TAG ...] [--] FORMAT [ARGUMENT ...]
 ```
 
 The same shape applies to every severity helper.
@@ -510,12 +514,13 @@ The same shape applies to every severity helper.
 Before the format string begins:
 
 - `--context CONTEXT` selects one active redaction context for this logging call;
+- `--to DESTINATION` selects one immediate stream or named queue;
 - `--tag TAG` adds one caller-supplied tag and MAY be repeated;
 - `--` ends bashlog option parsing.
 
-`--context` and `--tag` MAY appear in either order before the format string or
-`--`.  At most one `--context` is accepted.  A duplicate context option returns
-`64`.
+`--context`, `--to`, and `--tag` MAY appear in any order before the format
+string or `--`.  At most one `--context` and at most one `--to` are accepted;
+duplicates return `64`.
 
 `--` is required when the intended format string begins with `-` or could
 otherwise be interpreted as a bashlog option.  It MAY be used unconditionally for
@@ -635,8 +640,8 @@ Human rendering preserves representable message bytes according to Bash string
 semantics.  In particular, an embedded newline in the message remains an embedded
 newline.  The human renderer is not a generic log-injection sanitizer.
 
-bashlog appends exactly one final newline after the completed record when emitting
-it to standard error.
+bashlog appends exactly one final newline when immediately emitting a record or
+when inserting a completed record into a queue.  Flushing preserves those bytes.
 
 ## Logfmt Renderer
 
@@ -706,36 +711,79 @@ The logfmt renderer emits one physical log line for representable message data
 because embedded tabs, carriage returns, newlines, and other ASCII control bytes
 are escaped.
 
-## Logging Output Stream and Environment Boundary
+## Logging Destinations, FIFO Queues, and Environment Boundary
 
-All public logging functions emit their final record to **standard error**.
+Routine logging defaults to **STDERR** for every severity, preserving existing
+caller behavior.  Applications may opt into another destination per logging
+call with --to.  No global/context-specific default-setting API is implemented
+at this stage; those are planned for task #40.
 
-This applies to every severity.  bashlog does not use standard output for routine
-logging because standard output is commonly an application's data channel in
-shell programs, pipelines, and command substitutions.
+Exactly these case-sensitive ASCII destination strings are supported:
 
-A caller may redirect standard error using ordinary shell redirection.
+```text
+^(STDERR|STDOUT|queue:[A-Za-z0-9]+)$
+```
 
-Standard error is the universal bashlog sink.  bashlog does not attempt to infer
-what consumes file descriptor 2.  The surrounding environment may send that
-stream to a terminal, systemd journal, Docker or Podman logging driver, CI log,
-cron capture, file, pipe, orchestrator, or another destination.
+- STDERR writes a completed record immediately to descriptor 2.
+- STDOUT writes a completed record immediately to descriptor 1, expressly
+  opting into use of the application's data channel.
+- queue:NAME appends a completed record to a named in-memory FIFO queue,
+  without writing it to either stream until a caller requests a flush.
 
-The default `format=auto` behavior adapts only to whether file descriptor 2 is a
-TTY.  It does not identify the downstream logging infrastructure.
+Queue names are nonempty and case-sensitive, using only ASCII letters and
+digits.  queue:Errors and queue:errors are distinct.  Lowercase stream names,
+underscores, dashes, spaces, an empty name, and unsupported prefixes are
+invalid (status 64).  Destination text is never evaluated as shell code.
 
-The API does not provide implicit:
+Destination validation precedes threshold suppression and message
+construction.  A queue stores only fully rendered, newline-terminated
+records.  A protected record is redacted and finally verified at enqueue time.
+Timestamps, tags, format, and styling are resolved when the record is logged.
+With auto format or auto color, queues inspect descriptor 2 at enqueue time.
+Later flushes do not rerender, redact, verify again, or add framing.  Later
+redaction rules do not retroactively affect queued records, and destroying a
+context does not invalidate already verified records.
 
-- file sinks;
-- caller-selected file-descriptor sinks;
-- syslog transport;
-- journald socket transport;
-- TCP or UDP log transport;
-- `logger` invocation;
-- or another external-command sink.
+### Queue Operations
 
-A future direct remote-syslog or alternate-sink feature requires separate
-architectural review.
+```text
+bashlog_queue_flush NAME [--to STDERR|STDOUT]
+bashlog_queue_clear NAME
+```
+
+NAME is the queue name without queue:.  Both functions require a nonempty,
+case-sensitive ASCII alphanumeric name.
+
+Flush writes queued bytes FIFO, defaults to STDERR independently of all
+logging-call options, and never accepts queue-to-queue delivery.  A successful
+flush clears only the selected queue; empty or nonexistent queues succeed
+silently.  A failed write returns 74 and preserves the **entire** queue for
+retry, even after the destination observed a prefix.  Retrying can duplicate
+bytes; atomic delivery and exactly-once semantics are not guaranteed.
+
+Clear silently discards the selected queue; empty/nonexistent queues succeed.
+Clearing is not secure zeroization.  Both operations reject malformed inputs
+with status 64 without consuming queued records.
+
+Queues use unbounded process-local Bash memory, constrained by available
+resources.  There is no automatic flush, size cap, eviction, disk persistence,
+or library-installed EXIT trap.  A subshell has its own queue-state copy.
+The application owns flushing, memory usage, traps, and exit-status handling.
+
+Lossless caller-variable extraction (bashlog_queue_extract, task #39) is **not
+yet implemented**.  Global/context default destination get/set/reset (task
+#40) is **not yet implemented**.
+
+### Downstream Transport
+
+Immediate streams can be redirected or captured by terminals, service
+managers, container runtimes, CI, cron, pipes, and other consumers.  bashlog
+does not identify that environment; auto presentation observes only the
+selected effective file descriptor.
+
+Direct file sinks, arbitrary caller-selected descriptors, syslog, journald,
+network transports, and external logger commands are not implemented.
+Future destination types require separate architectural/security review.
 
 ## Redaction Is Explicit and Developer-Owned
 
@@ -804,7 +852,7 @@ bashlog_info --context secrets 'token=%s' "${token}"
 ```
 
 Under this workflow, bashlog owns the composition of message construction,
-redaction, rendering, final verification, and standard-error emission.  Once the
+redaction, rendering, final verification, and selected-destination delivery.  Once the
 context is explicitly selected, redaction and verification failures are
 fail-closed.
 
@@ -831,7 +879,7 @@ validate call, tags, and explicitly requested context, if any
     -> serialize fields and add renderer-owned presentation
     -> if --context was selected:
          finally verify the complete rendered candidate
-    -> emit to standard error
+    -> write selected stream or enqueue completed record
 ```
 
 Primary redaction occurs on caller-supplied semantic data **before** human
@@ -1080,7 +1128,8 @@ formatted message and each tag independently before rendering.
 
 After human or logfmt rendering is complete, a logging call that selected a
 context performs one additional **non-transforming** verification of the complete
-candidate immediately before standard-error emission.
+candidate immediately before immediate stream emission or queue insertion.
+Queue flush later replays the immutable previously verified bytes.
 
 This final check includes library-generated severity, optional timestamp,
 renderer punctuation, logfmt escaping, and human ANSI decoration where present.
@@ -1308,7 +1357,8 @@ contract promises:
 3. Logger-managed primary redaction occurs on caller-supplied semantic message and
    tag fields before presentation encoding.
 4. A context-protected logging candidate is finally verified after rendering and
-   before standard-error emission.
+   before immediate stream emission or queue insertion; flush replays unchanged
+   verified bytes without applying later redaction-context changes.
 5. A redaction or verification failure never falls back to emitting the original
    protected candidate.
 6. Successful verification means the candidate at that verification boundary
@@ -1608,7 +1658,7 @@ demonstrate at minimum:
 - per-level style overrides validate atomically;
 - one-level and all-level reset semantics;
 - `default normal` emits no bashlog-owned ANSI for that severity;
-- `format=auto` selects logfmt for non-TTY stderr and human for TTY stderr;
+- `format=auto` uses the selected stream TTY (STDERR for queues at enqueue time);
 - explicit human and logfmt selection overrides automatic selection;
 - exact human severity, tag, timestamp, and style behavior;
 - severity styling is bounded to the canonical signifier and resets immediately
@@ -1622,7 +1672,7 @@ demonstrate at minimum:
   threshold-suppressed calls;
 - tag validation is explicitly ASCII and tag order is preserved;
 - threshold boundaries for every severity;
-- logging functions do not write routine logs to standard output;
+- logging functions use STDERR unless explicitly directed to STDOUT or a queue;
 - invalid call syntax returns the documented status and does not emit caller data;
 - unknown and destroyed requested contexts fail closed;
 - registered contexts remain inert for logging calls that omit `--context`;

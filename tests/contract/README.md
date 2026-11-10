@@ -34,6 +34,9 @@ is that every artifact receives the same complete contract suite.
   printf-style formatting, stream separation, option parsing, context validation
   order, and emission errors.  These tests force plain human rendering when the
   renderer is not the behavior under test.
+- `destinations-and-queues.bats`: explicit STDOUT/STDERR, destination grammar,
+  named FIFO queues, empty queues, flush/clear, retry preservation, TTY-facing
+  auto presentation, and protected enqueue-time record verification.
 - `presentation.bats`: presentation defaults and setters, adaptive non-TTY
   logfmt, explicit human/logfmt rendering, tags, global color boundaries,
   per-severity symbolic styles and resets, severity-token-only ANSI placement,
@@ -68,9 +71,9 @@ The artifact is sourced into a clean child Bash process.  Tests use Bats' separa
 standard-output and standard-error capture because the public contract assigns
 different meanings to those streams.
 
-A Bats-captured stderr stream is not a TTY.  Therefore the actual default
-`format=auto` behavior is logfmt in tests unless the test deliberately selects
-`human`.  Tests whose purpose is levels or redaction rather than renderer choice
+A Bats-captured stderr or stdout stream is not a TTY.  Therefore the default
+`format=auto` behavior is logfmt unless a test deliberately selects `human`.
+Named queues inspect fd 2 at enqueue time, independently of flush destination.  Tests whose purpose is levels or redaction rather than renderer choice
 select `human` and `color=never` explicitly so they prove one contract at a time.
 
 Tests using `--separate-stderr` declare the required minimum Bats version in
