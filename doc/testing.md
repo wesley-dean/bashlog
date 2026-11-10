@@ -15,7 +15,7 @@ actually violated.
 The active public contract is implemented under `tests/contract/`.  These tests
 are derived from the Accepted `doc/bashlog-spec.md` and the governing ADR corpus,
 including ADR-025 through ADR-027 for presentation, adaptive rendering, and
-severity-token styles.
+severity-token styles, and ADR-034 for explicit destinations and queues.
 
 The Makefile runs every `tests/contract/*.bats` file against all three generated
 artifacts:
@@ -49,8 +49,10 @@ The suite covers at least:
 - timestamp, tag, global color, and per-severity style configuration;
 - exact severity-token-only ANSI placement and the invariant that logfmt contains
   no bashlog-owned ANSI;
-- logging option parsing, including `--context`, repeatable `--tag`, and the `--`
-  option terminator;
+- logging option parsing, including `--context`, explicit `--to`, repeatable
+  `--tag`, and the `--` option terminator;
+- STDOUT/STDERR routing, named FIFO queues, flush/clear, failure preservation,
+  case-sensitive names, immutable enqueue-time formatting, and context lifetime;
 - both caller-managed `bashlog_redact` and logger-managed `--context CONTEXT`
   redaction workflows;
 - context creation, append-only policy, destruction, tombstones, and unavailable
@@ -85,7 +87,8 @@ validate call/context
     -> render human or logfmt
     -> add human presentation styling, if enabled
     -> final non-transforming verification
-    -> stderr
+    -> immediate selected stream or verified queue append
+    -> optional later flush of unchanged queue bytes
 ```
 
 Primary redaction therefore does not rewrite library-generated severity or
@@ -172,6 +175,7 @@ formatting, shell options, and presentation state are material to bashlog.
 - human and logfmt rendering;
 - logger-managed and standalone redaction;
 - fixed, glob, and ERE matching;
+- explicit STDOUT, deferred named queue flush/clear, and failed flush retention;
 - context destruction; and
 - fail-closed final verification.
 

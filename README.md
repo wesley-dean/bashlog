@@ -44,6 +44,91 @@ level=info msg="Application started."
 No container, init system, service manager, CI platform, or logging backend is
 detected or guessed.
 
+## Explicit Destinations and Deferred Queues
+
+Logging still defaults to STDERR.  A call may explicitly select `STDOUT` or
+a named in-memory queue:
+
+```bash
+bashlog_info --to STDOUT 'message for standard output'
+bashlog_warning --to queue:errors 'warning: %s' "${reason}"
+bashlog_error --to queue:errors 'request failed: %s' "${request_id}"
+
+# Emit queued records FIFO, then clear this queue after success.
+bashlog_queue_flush errors --to STDERR
+
+# Alternatively, discard records without writing them:
+bashlog_queue_clear errors
+```
+
+A destination must match `^(STDERR|STDOUT|queue:[A-Za-z0-9]+)# bashlog
+
+bashlog is a sourceable pure-Bash logging library built around predictable
+behavior, explicit developer-owned redaction, and a small auditable runtime.
+
+The project is currently **pre-release**.  It targets Bash 4.3 or newer and uses
+only Bash language facilities and builtins at runtime.
+
+## Quick Start
+
+Source a built or pinned bashlog artifact, then log normally:
+
+```bash
+source "${project_root}/vendor/bashlog.bash"
+
+bashlog_info "Application started."
+bashlog_warning 'Configuration file %s is deprecated' "${config_file}"
+bashlog_error 'Request %s failed with status %s' "${request_id}" "${status}"
+```
+
+Routine log records go to standard error.  Standard output remains available for
+application data, pipelines, and command substitution.
+
+By default, bashlog adapts presentation only to whether standard error is a
+terminal:
+
+```text
+stderr is a TTY      -> human rendering with severity styling
+stderr is not a TTY  -> deterministic logfmt without ANSI
+```
+
+So an interactive call may look like:
+
+```text
+info: Application started.
+```
+
+while the same call under redirected or captured stderr becomes:
+
+```text
+level=info msg="Application started."
+```
+
+No container, init system, service manager, CI platform, or logging backend is
+detected or guessed.
+
+.  Names
+are case-sensitive, ASCII alphanumeric, and may not contain underscores,
+dashes, or spaces.  Using `--to STDOUT` is an explicit choice to write log
+records into the application's normally data-oriented stream.
+
+Messages are timestamped, rendered, and, when `--context` is selected,
+redacted and finally verified **when enqueued**.  The stored records are
+replayed as unchanged text on flush, including their newlines; later rule
+changes do not retroactively change the queue.  For `format=auto` and
+`color=auto`, a queue observes the STDERR TTY state at enqueue time.
+Direct `STDOUT` uses the STDOUT TTY state.
+
+A failed flush returns `74` and preserves the **entire** queue.  If some
+output was already written, a retry may duplicate it.  Queues have no size
+limit, automatic flush, persistence, or library-managed exit traps: they
+consume Bash-process memory until cleared, flushed, or process termination.
+An empty or nonexistent queue is a successful no-op for flush and clear.
+
+The additional ADR-034 APIs for extracting a queue into a variable and
+configuring global/context-specific default destinations are not yet shipped
+(tasks #39 and #40).
+
 ## Redaction in One Minute
 
 Logging is a data-egress boundary.  bashlog does not guess which values are
@@ -92,8 +177,9 @@ bashlog makes deliberately narrow, testable promises.
   network, or take ownership of application control flow.
 - **Runtime operation is pure Bash.**  Logging, formatting, timestamps, redaction,
   rendering, verification, and emission invoke no external commands.
-- **Standard error is the logging boundary.**  Transport, persistence,
-  aggregation, and forwarding belong to the caller's environment.
+- **Standard error is the default logging boundary.**  Explicit STDOUT output
+  and caller-flushed in-memory queues are supported.  Downstream transport,
+  persistence, and forwarding remain caller-managed.
 - **Severity remains durable.**  Canonical severity names are present in both
   human and logfmt output.
 - **Human styling is bounded.**  bashlog-owned color/intensity applies only to the
@@ -156,6 +242,9 @@ bashlog_error
 bashlog_critical
 bashlog_alert
 bashlog_emergency
+
+bashlog_queue_flush
+bashlog_queue_clear
 
 bashlog_redaction_add
 bashlog_redaction_context_destroy
@@ -361,7 +450,8 @@ text is always literal.
 For logger-managed redaction, bashlog protects the fully formatted caller message
 and each caller-supplied tag before rendering.  The completed rendered candidate
 is then verified non-transformingly against the explicitly selected context
-before standard-error emission.
+before immediate stream emission or insertion into a named queue.  Flushing
+replays previously verified bytes without revisiting the context.
 
 ## Logfmt Contract
 
