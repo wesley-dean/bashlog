@@ -139,7 +139,7 @@ bashlog's selected-context protection is applied and finally verified before an
 immediate stream write or insertion into a named queue.  Buffered records are
 immutable through bashlog's public queue operations; flush replays those bytes
 without re-verifying against subsequent context-rule additions.  The boundary
-ends at immediate output, queue extraction (future task #39), or a completed
+ends at immediate output, queue extraction into caller-owned storage, or a completed
 flush.  Downstream storage, transport, parsing, retention, and access control
 belong to the consuming environment.
 
@@ -171,7 +171,10 @@ STDERR remains the default.  A caller may explicitly opt into immediate STDOUT
 or an in-memory queue using --to.  After a selected context has been applied,
 final verification happens before immediate stream emission or queue insertion.
 A queue retains only completed, already verified rendered records and replays
-those exact bytes upon flush.  Changes to context rules cannot retroactively
+those exact bytes upon flush.  Explicit extraction transfers the unchanged
+content to a caller-owned, non-exported Bash scalar.  Validation rejects
+unsafe Bash variable names, array and nameref indirection, readonly targets,
+and conversion attributes.  Extracted values thereafter follow caller policy;  Changes to context rules cannot retroactively
 rewrite the earlier record.  An unsuccessful flush keeps the full queue, even
 if an earlier portion reached the downstream consumer.
 
@@ -480,7 +483,8 @@ Security claims should be supported by multiple forms of evidence:
 - ADR-024: final fail-closed verification;
 - ADR-026: semantic-data-before-presentation ordering and default STDERR;
 - ADR-034: explicit destinations, enqueue-time verification, queue failure
-  preservation, caller-owned memory/lifecycle, and deferred-write risks;
+  preservation, caller-owned memory/lifecycle, safe extraction to Bash scalars,
+  and deferred-write risks;
 - `doc/bashlog-spec.md`: normative observable behavior;
 - `tests/contract/`: positive and negative public/security tests;
 - `tests/contract/compat-bash43.bash`: representative behavior at the supported
