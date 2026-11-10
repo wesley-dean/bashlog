@@ -148,7 +148,7 @@ __bashlog_extract_target_valid() {
     _ | __bashlog_* | BASH* | FUNCNAME | GROUPS | DIRSTACK | PIPESTATUS)
       return 1
       ;;
-    EUID | UID | PPID | BASHPID | LINENO | RANDOM | SRANDOM | SECONDS | EPOCHSECONDS | EPOCHREALTIME)
+    EUID | UID | PPID | LINENO | RANDOM | SRANDOM | SECONDS | EPOCHSECONDS | EPOCHREALTIME)
       return 1
       ;;
     OPTIND | OPTARG | IFS | PATH | CDPATH | GLOBIGNORE | ENV | PWD | OLDPWD)
