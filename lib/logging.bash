@@ -58,11 +58,16 @@ __bashlog_destination_valid() {
   if (( $# != 1 )); then
     return 1
   fi
-  case $1 in
-    STDERR | STDOUT) return 0 ;;
-    queue:*) __bashlog_queue_name_valid "${1#queue:}" ;;
-    *) return 1 ;;
-  esac
+  # Use literal string equality rather than case/glob matching.  Bash's
+  # nocasematch shopt must not weaken the required case-sensitive grammar.
+  if [ "$1" = STDERR ] || [ "$1" = STDOUT ]; then
+    return 0
+  fi
+  if [ "${1:0:6}" = "queue:" ]; then
+    __bashlog_queue_name_valid "${1:6}"
+  else
+    return 1
+  fi
 }
 
 ## @var __bashlog_default_destination
@@ -112,30 +117,27 @@ bashlog_destination_set() {
   local status
 
   while (( $# > 0 )); do
-    case $1 in
-      --to)
-        if (( destination_seen || $# < 2 )); then
-          return 64
-        fi
-        if ! __bashlog_destination_valid "$2"; then
-          return 64
-        fi
-        destination=$2
-        destination_seen=1
-        shift 2
-        ;;
-      --context)
-        if (( context_seen || $# < 2 )); then
-          return 64
-        fi
-        context=$2
-        context_seen=1
-        shift 2
-        ;;
-      *)
+    # Literal tests keep option names case-sensitive under nocasematch.
+    if [ "$1" = --to ]; then
+      if (( destination_seen || $# < 2 )); then
         return 64
-        ;;
-    esac
+      fi
+      if ! __bashlog_destination_valid "$2"; then
+        return 64
+      fi
+      destination=$2
+      destination_seen=1
+      shift 2
+    elif [ "$1" = --context ]; then
+      if (( context_seen || $# < 2 )); then
+        return 64
+      fi
+      context=$2
+      context_seen=1
+      shift 2
+    else
+      return 64
+    fi
   done
 
   if (( !destination_seen )); then
@@ -182,7 +184,7 @@ bashlog_destination_get() {
 
   if (( $# == 0 )); then
     :
-  elif (( $# == 2 )) && [[ $1 == --context ]]; then
+  elif (( $# == 2 )) && [ "$1" = --context ]; then
     if __bashlog_context_resolve_active "$2"; then
       status=0
     else
@@ -229,7 +231,7 @@ bashlog_destination_reset() {
     return 0
   fi
 
-  if (( $# != 2 )) || [[ $1 != --context ]]; then
+  if (( $# != 2 )) || [ "$1" != --context ]; then
     return 64
   fi
 

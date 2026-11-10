@@ -341,3 +341,30 @@ BASH
   [ -z "$output" ]
   [ -z "$stderr" ]
 }
+
+@test "destination configuration validation is case-sensitive with nocasematch on" {
+  run_bashlog_script <<'BASH'
+    source "$1"
+    bashlog_redaction_add auth fixed secret '[R]' || exit
+    shopt -s nocasematch
+    bashlog_destination_set --to stderr && exit 21
+    [[ $? -eq 64 ]] || exit 22
+    bashlog_destination_set --to QUEUE:Named && exit 23
+    [[ $? -eq 64 ]] || exit 24
+    bashlog_destination_set --TO STDOUT && exit 25
+    [[ $? -eq 64 ]] || exit 26
+    bashlog_destination_set --to STDOUT --CONTEXT auth && exit 27
+    [[ $? -eq 64 ]] || exit 28
+    bashlog_destination_get --CONTEXT auth && exit 29
+    [[ $? -eq 64 ]] || exit 30
+    bashlog_destination_reset --CONTEXT auth && exit 31
+    [[ $? -eq 64 ]] || exit 32
+    [[ $(bashlog_destination_get) == STDERR ]] || exit 33
+    bashlog_destination_set --context auth --to queue:Valid || exit 34
+    [[ $(bashlog_destination_get --context auth) == queue:Valid ]] || exit 35
+    shopt -q nocasematch || exit 36
+BASH
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -z "$stderr" ]
+}
