@@ -53,6 +53,9 @@ The suite covers at least:
   `--tag`, and the `--` option terminator;
 - STDOUT/STDERR routing, named FIFO queues, flush/clear, failure preservation,
   case-sensitive names, immutable enqueue-time formatting, and context lifetime;
+- default destination initial state, getters, setters, reset/inheritance,
+  context-destruction cleanup, invalid-input atomicity, and precedence of
+  per-call, context-specific, and global destination selection;
 - exact queue extraction preserving embedded/trailing newlines, caller-owned
   scalar assignment, forbidden variable attributes, failed-extraction retention,
   case-sensitive queue isolation, and the absence of shell evaluation;

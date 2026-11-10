@@ -37,6 +37,9 @@ is that every artifact receives the same complete contract suite.
 - `destinations-and-queues.bats`: explicit STDOUT/STDERR, destination grammar,
   named FIFO queues, empty queues, flush/clear, retry preservation, TTY-facing
   auto presentation, and protected enqueue-time record verification.
+- `destination-defaults.bats`: global and context-scoped destination getters,
+  setters and resets, inheritance, explicit per-call override, validation,
+  destruction and existing queue preservation.
 - `queue-extraction.bats`: lossless byte preservation with trailing newlines,
   safe scalar assignment, variable attributes and reserved names, failure
   retention, case-sensitive queues, subshell isolation, and redaction boundaries.

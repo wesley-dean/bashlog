@@ -143,8 +143,9 @@ bashlog_redaction_add() {
 ## and rule registration.  Destruction applies to the whole context; the public
 ## API does not delete or mutate individual rules.
 ##
-## On success, bashlog removes its active references to the context rule data as
-## far as the implementation can intentionally control and retains only
+## On success, bashlog removes its active references to the context rule data
+## and the context's optional destination override, without clearing previously
+## verified queued records.  It retains only
 ## non-secret tombstone state needed to prevent reuse of that context name in the
 ## current Bash process.
 ##
@@ -189,6 +190,9 @@ bashlog_redaction_context_destroy() {
 
   context_index=${__bashlog_context_index}
   __bashlog_context_states[context_index]=destroyed
+  # Context-owned routing configuration does not survive destruction.
+  # Previously enqueued records remain owned by their independent queues.
+  unset "__bashlog_context_destination_overrides[$context_index]"
 
   for ((index = 0; index < __bashlog_rule_count; index++)); do
     if (( __bashlog_rule_contexts[index] != context_index )); then
