@@ -127,6 +127,108 @@ bashlog_queue_flush() {
   return 0
 }
 
+
+## @fn __bashlog_extract_target_valid()
+## @brief Validates a safe caller variable name for exact queue extraction.
+## @details
+## Names must be ordinary Bash identifiers and cannot refer to shell-managed
+## variables or bashlog-owned state.  Attribute validation is separate.
+## @param target Caller-supplied identifier.
+## @retval 0 Valid non-reserved name.
+## @retval 1 Invalid or reserved name.
+__bashlog_extract_target_valid() {
+  local LC_ALL=C
+  local target=${1-}
+
+  if (( $# != 1 )) || [[ ! ${target} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    return 1
+  fi
+
+  case ${target} in
+    _ | __bashlog_* | BASH* | FUNCNAME | GROUPS | DIRSTACK | PIPESTATUS)
+      return 1
+      ;;
+    EUID | UID | PPID | BASHPID | LINENO | RANDOM | SRANDOM | SECONDS | EPOCHSECONDS | EPOCHREALTIME)
+      return 1
+      ;;
+    OPTIND | OPTARG | IFS | PATH | CDPATH | GLOBIGNORE | ENV | PWD | OLDPWD)
+      return 1
+      ;;
+    HOME | SHELL | USER | LOGNAME | HOSTNAME | HOSTTYPE | OSTYPE | MACHTYPE | SHLVL)
+      return 1
+      ;;
+    TERM | TZ | LANG | LC_* | LD_* | PS[0-9] | PROMPT_COMMAND)
+      return 1
+      ;;
+    MAIL* | HIST* | COMP_* | READLINE_* | REPLY | MAPFILE | TMOUT | INPUTRC | COLUMNS | LINES | FIGNORE)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+## @fn bashlog_queue_extract()
+## @brief Moves a queue's unchanged, newline-preserving contents into a scalar.
+## @details
+## NAME must match [A-Za-z0-9]+, without queue:.  VARIABLE is a safe Bash
+## identifier naming a new or existing ordinary scalar.  Readonly, exported,
+## integer, array, nameref, and other attributed variables are rejected to
+## avoid unsafe indirect writes, arithmetic evaluation, or environment export.
+##
+## Direct printf -v assignment preserves embedded and trailing newlines without
+## eval or command substitution of record bytes.  Only after a successful
+## assignment is the queue cleared.  Failure leaves the whole queue intact.
+## Empty/nonexistent queues assign the empty string and succeed.
+##
+## Extracted data becomes caller-owned.  It is not reverified against newer
+## redaction rules; logging it again creates a new record, not reconstructed
+## per-record severity, timestamps, or other metadata.
+## @param name ASCII alphanumeric queue name, without queue:.
+## @param variable Caller-owned, safe Bash scalar identifier.
+## @par Standard Output
+## No output.
+## @par Standard Error
+## No ordinary output or leaked shell assignment diagnostics.
+## @retval 0 Exact bytes assigned; queue cleared.
+## @retval 64 Invalid arguments, queue/target name, or unsafe target attributes.
+## @retval 70 Assignment failure; complete queue retained.
+bashlog_queue_extract() {
+  local __bashlog_extract_name
+  local __bashlog_extract_target
+  local __bashlog_extract_declaration
+  local __bashlog_extract_records
+
+  if (( $# != 2 )); then
+    return 64
+  fi
+
+  __bashlog_extract_name=$1
+  __bashlog_extract_target=$2
+
+  if ! __bashlog_queue_name_valid "${__bashlog_extract_name}" ||
+    ! __bashlog_extract_target_valid "${__bashlog_extract_target}"; then
+    return 64
+  fi
+
+  # Use Bash 4.3-compatible declare introspection.  Accept only existing
+  # un-attributed scalars or new names; never evaluate a variable name as code.
+  if __bashlog_extract_declaration=$(declare -p "${__bashlog_extract_target}" 2>/dev/null); then
+    case ${__bashlog_extract_declaration} in
+      'declare -- '*) ;;
+      *) return 64 ;;
+    esac
+  fi
+
+  __bashlog_extract_records=${__bashlog_queue_records[$__bashlog_extract_name]-}
+  if ! printf -v "${__bashlog_extract_target}" '%s' "${__bashlog_extract_records}" 2>/dev/null; then
+    return 70
+  fi
+
+  unset "__bashlog_queue_records[$__bashlog_extract_name]"
+  return 0
+}
+
 ## @fn bashlog_queue_clear()
 ## @brief Discards one queue without emitting its contents.
 ## @details No implicit flush, exit trap, context change, or secure erasure
