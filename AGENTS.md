@@ -161,6 +161,10 @@ bashlog_queue_flush
 bashlog_queue_clear
 bashlog_queue_extract
 
+bashlog_destination_get
+bashlog_destination_set
+bashlog_destination_reset
+
 bashlog_redaction_add
 bashlog_redaction_context_destroy
 bashlog_redact
@@ -205,8 +209,12 @@ Important public semantics include:
   direct file/network/syslog sinks, and `bashlog_die` remain outside the contract.
 - ADR-034 supports lossless extraction into an ordinary caller-owned scalar;
   it never re-verifies extracted bytes against subsequently added rules.
-- ADR-034's configurable destination defaults remain unimplemented pending
-  task #40; do not document their APIs as available before they ship.
+- ADR-034 destination precedence is explicit per-call --to, then the override
+  of a context explicitly selected on the call, then the global default.
+  No --context means no context-specific routing or redaction.  The global
+  default begins at STDERR, and context reset restores inheritance.
+- Destroying a redaction context removes its routing override without
+  discarding previously verified queued records.
 - Shared public return statuses are defined in `doc/bashlog-spec.md`.
 
 Do not expand the public surface merely because an internal helper is convenient

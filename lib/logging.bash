@@ -15,8 +15,9 @@
 ## to delegate redaction of the formatted message and tags to this pipeline.  A
 ## logging call without `--context` does not inspect registered contexts.
 ##
-## Logging defaults to standard error; explicit --to STDOUT or --to queue:NAME
-## is an opt-in redirection.  Queues contain only completed record bytes.
+## Logging defaults to standard error unless a caller configures a global or
+## explicitly selected context default; a per-call --to always has priority.
+## Queues contain only completed record bytes.
 ## A threshold-suppressed logging call is successful and returns zero without
 ## constructing its message or acquiring presentation metadata after syntax and
 ## requested-context validation have succeeded.
@@ -57,11 +58,194 @@ __bashlog_destination_valid() {
   if (( $# != 1 )); then
     return 1
   fi
-  case $1 in
-    STDERR | STDOUT) return 0 ;;
-    queue:*) __bashlog_queue_name_valid "${1#queue:}" ;;
-    *) return 1 ;;
-  esac
+  # Use literal string equality rather than case/glob matching.  Bash's
+  # nocasematch shopt must not weaken the required case-sensitive grammar.
+  if [ "$1" = STDERR ] || [ "$1" = STDOUT ]; then
+    return 0
+  fi
+  if [ "${1:0:6}" = "queue:" ]; then
+    __bashlog_queue_name_valid "${1:6}"
+  else
+    return 1
+  fi
+}
+
+## @var __bashlog_default_destination
+## @brief Process-local default destination for logging calls without --to.
+## @details
+## The initial/default value is STDERR.  It is reset explicitly by the caller;
+## merely sourcing the library does not redirect application output.
+declare -g __bashlog_default_destination=STDERR
+
+## @var __bashlog_context_destination_overrides
+## @brief Optional destination overrides indexed by active redaction context slot.
+## @details
+## An absent entry inherits the global default.  An explicit STDERR override
+## is distinct from absence: changing the global default must not supersede it.
+## Slots belong to the existing redaction context lifecycle; destruction of a
+## context removes the override without destroying any previously queued logs.
+declare -ga __bashlog_context_destination_overrides=()
+
+## @fn bashlog_destination_set()
+## @brief Configures a default destination globally or for an active context.
+## @details
+## The form is --to DESTINATION, optionally paired with --context CONTEXT.
+## Options may be in either order but neither may occur twice.  The destination
+## grammar is exactly STDERR, STDOUT, or queue:[A-Za-z0-9]+.
+##
+## A context-scoped setting attaches to an existing *active* redaction context.
+## It never registers a redaction rule, creates a context, or automatically
+## applies that context to a later logging call.  All input validation and
+## context resolution complete before the selected configuration is mutated.
+## Invalid input leaves both global and context-specific settings unchanged.
+##
+## A context override of STDERR is an explicit setting: it must not become an
+## inherited value if the global default is subsequently changed.
+## @param args --to DESTINATION [--context CONTEXT], in either option order.
+## @par Standard Output
+## No output.
+## @par Standard Error
+## No routine output or disclosure of caller message text.
+## @retval 0 Validated destination stored at the selected scope.
+## @retval 64 Invalid/missing/duplicate options, identifier, or destination.
+## @retval 69 Requested context is unknown or destroyed.
+bashlog_destination_set() {
+  local destination=
+  local destination_seen=0
+  local context=
+  local context_seen=0
+  local status
+
+  while (( $# > 0 )); do
+    # Literal tests keep option names case-sensitive under nocasematch.
+    if [ "$1" = --to ]; then
+      if (( destination_seen || $# < 2 )); then
+        return 64
+      fi
+      if ! __bashlog_destination_valid "$2"; then
+        return 64
+      fi
+      destination=$2
+      destination_seen=1
+      shift 2
+    elif [ "$1" = --context ]; then
+      if (( context_seen || $# < 2 )); then
+        return 64
+      fi
+      context=$2
+      context_seen=1
+      shift 2
+    else
+      return 64
+    fi
+  done
+
+  if (( !destination_seen )); then
+    return 64
+  fi
+
+  if (( context_seen )); then
+    if __bashlog_context_resolve_active "${context}"; then
+      status=0
+    else
+      status=$?
+    fi
+    if (( status != 0 )); then
+      return "${status}"
+    fi
+
+    __bashlog_context_destination_overrides[__bashlog_context_index]=${destination}
+  else
+    __bashlog_default_destination=${destination}
+  fi
+
+  return 0
+}
+
+## @fn bashlog_destination_get()
+## @brief Prints the effective global or selected-context default destination.
+## @details
+## With no arguments, returns the global default.  With --context CONTEXT,
+## validates and resolves an active context; an explicit override wins over
+## global configuration, while an absent override inherits the global default.
+## The operation does not select a context for logging or mutate any settings.
+## @param args Optional --context CONTEXT.
+## @par Standard Output
+## Exactly one destination identifier followed by a newline on success.
+## @par Standard Error
+## No routine output on success.
+## @retval 0 Destination printed successfully.
+## @retval 64 Invalid option shape or context identifier.
+## @retval 69 Requested context is unknown or destroyed.
+## @retval 74 Output write failed.
+bashlog_destination_get() {
+  local destination=${__bashlog_default_destination}
+  local status
+
+  if (( $# == 0 )); then
+    :
+  elif (( $# == 2 )) && [ "$1" = --context ]; then
+    if __bashlog_context_resolve_active "$2"; then
+      status=0
+    else
+      status=$?
+    fi
+    if (( status != 0 )); then
+      return "${status}"
+    fi
+
+    if [[ -n ${__bashlog_context_destination_overrides[__bashlog_context_index]-} ]]; then
+      destination=${__bashlog_context_destination_overrides[__bashlog_context_index]}
+    fi
+  else
+    return 64
+  fi
+
+  if ! builtin printf '%s\n' "${destination}"; then
+    return 74
+  fi
+
+  return 0
+}
+
+## @fn bashlog_destination_reset()
+## @brief Restores global STDERR or removes a context-scoped override.
+## @details
+## A global reset returns the default destination to STDERR.  A context reset
+## unsets only that context's explicit override, restoring future inheritance
+## from the configured global default.  Existing queued records are unchanged.
+## Context-specific reset requires an existing active redaction context.
+## @param args Optional --context CONTEXT.
+## @par Standard Output
+## No output.
+## @par Standard Error
+## No routine output.
+## @retval 0 Selected override removed or global default reset to STDERR.
+## @retval 64 Invalid option shape or context identifier.
+## @retval 69 Requested context is unknown or destroyed.
+bashlog_destination_reset() {
+  local status
+
+  if (( $# == 0 )); then
+    __bashlog_default_destination=STDERR
+    return 0
+  fi
+
+  if (( $# != 2 )) || [ "$1" != --context ]; then
+    return 64
+  fi
+
+  if __bashlog_context_resolve_active "$2"; then
+    status=0
+  else
+    status=$?
+  fi
+  if (( status != 0 )); then
+    return "${status}"
+  fi
+
+  unset "__bashlog_context_destination_overrides[$__bashlog_context_index]"
+  return 0
 }
 
 ## @fn bashlog_queue_flush()
@@ -276,9 +460,10 @@ bashlog_queue_clear() {
 ## @param args Optional `--to DESTINATION`, `--context CONTEXT`, repeatable tags, `--`,
 ## FORMAT, and printf arguments as defined by the public specification.
 ## @par Standard Output
-## One record only when --to STDOUT is selected.
+## One record when the effective destination is STDOUT.
 ## @par Standard Error
-## One record by default or explicit --to STDERR.  Fail-closed context errors
+## One record when the effective destination is STDERR (the initial default).
+## Fail-closed context errors
 ## may emit only the fixed safe diagnostic `bashlog: message suppressed` when that
 ## diagnostic itself can be emitted safely.
 ## @retval 0 The record was emitted successfully or was intentionally suppressed
@@ -394,7 +579,16 @@ bashlog_log() {
     return 64
   fi
 
-  # Global/context defaults arrive in task #40; preserve STDERR otherwise.
+  # Resolve defaults only after validating the complete logging call.
+  # An explicit --to always outranks context and global configuration.
+  if (( !destination_seen )); then
+    destination=${__bashlog_default_destination}
+    if (( context_seen )) &&
+      [[ -n ${__bashlog_context_destination_overrides[context_index]-} ]]; then
+      destination=${__bashlog_context_destination_overrides[context_index]}
+    fi
+  fi
+
   if [[ ${destination} == STDOUT ]]; then
     render_fd=1
   fi

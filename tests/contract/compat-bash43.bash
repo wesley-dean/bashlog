@@ -11,6 +11,8 @@ fail() {
 
 source "${BASHLOG_ARTIFACT}"
 
+[[ $(bashlog_destination_get) == STDERR ]] || fail 'initial destination default'
+
 [[ $(bashlog_level_get) == info ]] || fail 'default level'
 [[ $(bashlog_format_get) == auto ]] || fail 'default format'
 [[ $(bashlog_timestamp_get) == off ]] || fail 'default timestamp'
@@ -75,6 +77,33 @@ bashlog_queue_extract ReadOnly locked
 [[ $? -eq 64 ]] || fail 'readonly extraction status'
 bashlog_queue_flush ReadOnly --to STDOUT >"${stdout_file}" 2>"${stderr_file}" || fail 'readonly queue flush'
 [[ $(<"${stdout_file}") == 'info: preserved' ]] || fail 'readonly extraction keeps queue'
+
+bashlog_redaction_add routing fixed 'sensitive' '[R]' || fail 'routing context creation'
+bashlog_destination_set --to queue:Default || fail 'global queue default'
+[[ $(bashlog_destination_get) == queue:Default ]] || fail 'read global default'
+[[ $(bashlog_destination_get --context routing) == queue:Default ]] || fail 'context inheritance'
+bashlog_destination_set --context routing --to STDOUT || fail 'context override'
+[[ $(bashlog_destination_get --context routing) == STDOUT ]] || fail 'context override get'
+bashlog_info 'global' || fail 'enqueue global default'
+bashlog_info --context routing 'sensitive' >"${stdout_file}" 2>"${stderr_file}" || fail 'context routing'
+[[ $(<"${stdout_file}") == 'info: [R]' ]] || fail 'context redaction with route'
+[[ ! -s ${stderr_file} ]] || fail 'context route stderr'
+bashlog_destination_set --to STDERR || fail 'change global'
+[[ $(bashlog_destination_get --context routing) == STDOUT ]] || fail 'explicit context survives global change'
+bashlog_destination_reset --context routing || fail 'remove context override'
+[[ $(bashlog_destination_get --context routing) == STDERR ]] || fail 'context reset inherits'
+bashlog_queue_flush Default >"${stdout_file}" 2>"${stderr_file}" || fail 'flush stored default'
+[[ $(<"${stderr_file}") == 'info: global' ]] || fail 'stored default remains'
+bashlog_destination_set --to STDOUT || fail 'global STDOUT default'
+bashlog_destination_reset || fail 'reset global'
+[[ $(bashlog_destination_get) == STDERR ]] || fail 'reset global to STDERR'
+bashlog_destination_set --context routing --to queue:Retained || fail 'context queue'
+bashlog_info --context routing 'sensitive' || fail 'context queued record'
+bashlog_redaction_context_destroy routing || fail 'destroy routing context'
+bashlog_destination_get --context routing >"${stdout_file}" 2>"${stderr_file}"
+[[ $? -eq 69 ]] || fail 'destroyed routing context inaccessible'
+bashlog_queue_flush Retained --to STDOUT >"${stdout_file}" 2>"${stderr_file}" || fail 'flush after destroy'
+[[ $(<"${stdout_file}") == 'info: [R]' ]] || fail 'destroyed context preserves queued records'
 
 bashlog_format_set logfmt || fail 'set logfmt format'
 bashlog_info --tag compat 'compatibility=%s' bash43 >"${stdout_file}" 2>"${stderr_file}" || fail 'logfmt info call'

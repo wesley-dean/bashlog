@@ -94,8 +94,33 @@ readonly values, arrays, namerefs, integer scalars, exported variables, and
 Bash special variables are rejected without consuming the queue.  Treat the
 extracted bytes as caller-owned data; logging them again creates a new record.
 
-Global and context-specific default destination configuration remain planned
-under task #40 and are not yet shipped.
+A caller may also set the global default, or attach a default to an existing
+active redaction context:
+
+```bash
+bashlog_destination_set --to queue:errors
+bashlog_info 'queued using the global default'
+
+bashlog_redaction_add secrets fixed 'private' '[REDACTED]'
+bashlog_destination_set --context secrets --to STDERR
+bashlog_error --context secrets 'value=%s' private
+
+# Explicit --to overrides either default for one call:
+bashlog_error --context secrets --to STDOUT 'safe message'
+
+# Removing the context override restores inheritance of the global default:
+bashlog_destination_reset --context secrets
+bashlog_destination_get --context secrets
+bashlog_destination_reset
+```
+
+The effective destination is selected in this order: explicit per-call
+`--to`, selected context override, global default (initially `STDERR`).
+Context routing does **not** implicitly enable redaction; a caller must
+explicitly select the context on each protected logging call.  Destroying a
+context removes its routing override, but does not clear queued records.
+`bashlog_queue_flush` still defaults to immediate `STDERR` regardless of
+configured defaults.
 
 ## Redaction in One Minute
 
@@ -213,6 +238,11 @@ bashlog_emergency
 
 bashlog_queue_flush
 bashlog_queue_clear
+bashlog_queue_extract
+
+bashlog_destination_get
+bashlog_destination_set
+bashlog_destination_reset
 
 bashlog_redaction_add
 bashlog_redaction_context_destroy

@@ -101,6 +101,10 @@ bashlog_queue_flush
 bashlog_queue_clear
 bashlog_queue_extract
 
+bashlog_destination_get
+bashlog_destination_set
+bashlog_destination_reset
+
 bashlog_redaction_add
 bashlog_redaction_context_destroy
 bashlog_redact
@@ -715,9 +719,9 @@ are escaped.
 ## Logging Destinations, FIFO Queues, and Environment Boundary
 
 Routine logging defaults to **STDERR** for every severity, preserving existing
-caller behavior.  Applications may opt into another destination per logging
-call with --to.  No global/context-specific default-setting API is implemented
-at this stage; those are planned for task #40.
+caller behavior.  Callers may change the global default, configure an override
+on a previously established active redaction context, or select a destination
+explicitly for one call with `--to`.
 
 Exactly these case-sensitive ASCII destination strings are supported:
 
@@ -807,8 +811,69 @@ tags, or other metadata.  Bash cannot preserve embedded NUL bytes.
 Variable extraction is a separate queue operation, not a destination type.
 The destination grammar does not accept var:VARIABLE.
 
-Global and context-specific destination get/set/reset remain planned for
-task #40 and are **not yet implemented**.
+### Destination Configuration and Precedence
+
+The following functions configure process-local destinations:
+
+```text
+bashlog_destination_set --to DESTINATION
+bashlog_destination_get
+bashlog_destination_reset
+
+bashlog_destination_set --context CONTEXT --to DESTINATION
+bashlog_destination_get --context CONTEXT
+bashlog_destination_reset --context CONTEXT
+```
+
+The initial global default is STDERR.  An unscoped set replaces the global
+default with one valid destination identifier.  An unscoped get writes the
+configured global default and exactly one newline to standard output.  An
+unscoped reset restores the default to STDERR.
+
+The optional --context on a setter requires an *already active* redaction
+context, created through successful redaction-rule registration.  It does not
+create a context or make that context apply automatically to other calls.
+The set function accepts --to and --context in either order, at most once each.
+The selected context's get returns the **effective** destination: the
+explicit context override when present, otherwise the global default.
+A context reset removes the override and restores inheritance.  It does not
+install a literal STDERR override.  An explicit context override of STDERR
+remains in effect even when the global default is subsequently changed.
+
+For each logging call, destination resolution follows the exact precedence:
+
+1. An explicit per-call --to DESTINATION;
+2. an override belonging to the explicitly selected active --context;
+3. the global default, initially STDERR.
+
+A configured context default never selects a redaction context.  A logging
+call without --context does not inherit any context-specific routing policy.
+An explicit per-call --to is allowed to override a context destination, while
+the context still governs the call's required redaction and verification.
+Threshold suppression remains the final result for an otherwise valid call.
+
+All configured destinations must match the same anchored, case-sensitive
+ASCII grammar as per-call destinations.  Invalid destination syntax, missing
+values, duplicate flags, or unsupported option shapes return 64 without
+changing existing configuration or queued records.  A syntactically invalid
+context name returns 64; a valid unknown or destroyed context returns 69.
+Getters and resets accept either no arguments or exactly --context CONTEXT.
+A successful getter emits only the selected destination and a newline; a
+failed stream write reports 74.  Set and reset operations have no ordinary
+output.
+
+Destroying a context removes its destination override at the same time as its
+redaction rules, without flushing or clearing queues that received previously
+verified records.  Destroyed names remain unavailable for reuse.  Global
+destination changes do not alter prior context overrides or queued records.
+
+Queue flushing is intentionally separate: bashlog_queue_flush NAME continues
+to emit to STDERR by default, regardless of either default destination, and
+its --to accepts only STDERR or STDOUT.  Destination configuration never
+installs traps, automatically drains queues, or changes application exit
+policy.
+
+
 
 ### Downstream Transport
 

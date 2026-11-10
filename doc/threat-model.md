@@ -167,8 +167,12 @@ The completed rendered record is then verified again against the selected contex
 
 ### bashlog to selected streams or process-local queues
 
-STDERR remains the default.  A caller may explicitly opt into immediate STDOUT
-or an in-memory queue using --to.  After a selected context has been applied,
+STDERR remains the initial default.  A caller may change the process-local
+logging default, attach a routing override to an already active redaction
+context, or explicitly select a destination with --to on an individual call.
+A context-specific default only applies when the context is explicitly selected;
+routing configuration does not silently activate redaction.  A per-call --to
+may override routing without bypassing the selected context's redaction.  After a selected context has been applied,
 final verification happens before immediate stream emission or queue insertion.
 A queue retains only completed, already verified rendered records and replays
 those exact bytes upon flush.  Explicit extraction transfers the unchanged
@@ -177,6 +181,10 @@ unsafe Bash variable names, array and nameref indirection, readonly targets,
 and conversion attributes.  Extracted values thereafter follow caller policy;  Changes to context rules cannot retroactively
 rewrite the earlier record.  An unsuccessful flush keeps the full queue, even
 if an earlier portion reached the downstream consumer.
+
+Destroying a context removes its default destination override, but does not
+discard already verified records in independent queues.  Configuration resets
+or global default changes do not retroactively change those records.
 
 Queues have no memory limit, persistence, or automatic draining, and clearing
 is not secure erasure.  Once bytes are written to a stream, forwarding, parsing,
