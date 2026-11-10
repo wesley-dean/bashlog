@@ -143,7 +143,8 @@ BASH
       bashlog_level_style_get bashlog_level_style_set bashlog_level_style_reset \
       bashlog_log bashlog_debug bashlog_info bashlog_notice \
       bashlog_warning bashlog_error bashlog_critical bashlog_alert \
-      bashlog_emergency bashlog_queue_flush bashlog_queue_clear bashlog_redaction_add \
+      bashlog_emergency bashlog_queue_flush bashlog_queue_clear \
+      bashlog_queue_extract bashlog_redaction_add \
       bashlog_redaction_context_destroy bashlog_redact; do
       declare -F "${name}" >/dev/null || exit 1
     done
