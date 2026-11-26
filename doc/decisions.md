@@ -379,3 +379,15 @@ API available before the public specification, implementation, and tests are
 updated.
 
 See [ADR-034](adr/ADR-034-explicit-destinations-and-deferred-logging-queues.md).
+
+## ADR-035: Migrate Routine Dependency Updates to Centrally Managed Renovate
+
+The repository moves scheduled routine dependency updates from Dependabot
+to the existing Jenkins-hosted Renovate service, using an explicit root
+`renovate.json` configuration.  Dependabot security updates, immutable
+SHA pins, existing CI gates, and human approval requirements remain separate
+and preserved.  ADR-035 partially supersedes the earlier grouped Dependabot
+maintenance decision by replacing the active version-update provider and
+allowing a zero routine PR limit.  Renovate account access, security settings,
+and operational execution require independent verification.
+See [ADR-035](adr/ADR-035-migrate-routine-dependency-updates-to-renovate.md).
